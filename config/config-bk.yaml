@@ -1,0 +1,34 @@
+logging:
+  use_wandb: true  # Set to false to disable wandb logging
+  wandb_project: "WindowsRecognition"
+  wandb_experiment: "solve_overfitting"  # Experiment name for wandb
+  wandb_mode: "online"  # Set to "online" or "offline"
+
+paths:
+  train_images: "data/processed/v1/images/train"
+  train_masks: "data/processed/v1/annotations/train"
+  val_images: "data/processed/v1/images/val"
+  val_masks: "data/processed/v1/annotations/val"
+  model_save_path: "models/unet_model.ckpt"
+
+hyperparameters:
+  train_batch_size: 16  # Separate train batch size
+  val_batch_size: 16    # Separate val batch size
+  epochs: 1
+  learning_rate: 0.001
+  image_size: [256, 256]  # Configurable image size as [height, width]
+  scheduler:
+    type: "StepLR"
+    step_size: 5
+    gamma: 0.5
+
+model:
+  name: "Unet"
+  backbone: "efficientnet-b4"
+  encoder_weights: "imagenet"  # [imagenet, null] Set to null to not use pre-trained weights 
+  in_channels: 3
+  classes: 1
+
+trainer:
+  accelerator: "gpu"  # Use "gpu" for GPU training or "cpu"
+  devices: 1          # Number of GPUs to use (set to None for CPU)

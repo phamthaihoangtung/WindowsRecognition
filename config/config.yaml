@@ -1,0 +1,35 @@
+logging:
+  use_wandb: true  # Set to false to disable wandb logging
+  wandb_project: "WindowsRecognition"
+  wandb_experiment: "sanity_check_v2"  # Experiment name for wandb
+  wandb_mode: "online"  # Set to "online" or "offline"
+
+paths:
+  train_images: "data/processed/sanity_check/images/train"
+  train_masks: "data/processed/sanity_check/annotations/train"
+  val_images: "data/processed/v1/images/val"
+  val_masks: "data/processed/v1/annotations/val"
+  model_save_path: "models/unet_model.ckpt"
+
+hyperparameters:
+  train_batch_size: 4  # Separate train batch size
+  val_batch_size: 4    # Separate val batch size
+  epochs: 30
+  learning_rate: 0.001
+  image_size: [512, 512]  # Configurable image size as [height, width]
+  early_stopping_patience: 30  # Number of epochs with no improvement after which training will be stopped
+  scheduler:
+    type: "ExponentialLR"
+    # step_size: 5
+    gamma: 0.9 # Decay rate for ExponentialLR
+
+model:
+  name: "Unet"
+  backbone: "efficientnet-b4"
+  encoder_weights: "imagenet"  # [imagenet, null] Set to null to not use pre-trained weights 
+  in_channels: 3
+  classes: 1
+
+trainer:
+  accelerator: "gpu"  # Use "gpu" for GPU training or "cpu"
+  devices: 1          # Number of GPUs to use (set to None for CPU)

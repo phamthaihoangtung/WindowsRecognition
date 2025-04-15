@@ -176,3 +176,9 @@ cython_debug/
 # Data folder
 data/*
 !data/.gitkeep
+
+# Weights & Biases
+wandb/
+
+# Ignore all .ckpt files
+*.ckpt
