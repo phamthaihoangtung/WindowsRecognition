@@ -1,14 +1,20 @@
 logging:
   use_wandb: true  # Set to false to disable wandb logging
   wandb_project: "WindowsRecognition"
-  wandb_experiment: "sanity_check_v2"  # Experiment name for wandb
+  wandb_experiment: "2_val_sets_200_samples"  # Experiment name for wandb
   wandb_mode: "online"  # Set to "online" or "offline"
 
 paths:
   train_images: "data/processed/sanity_check/images/train"
   train_masks: "data/processed/sanity_check/annotations/train"
-  val_images: "data/processed/v1/images/val"
-  val_masks: "data/processed/v1/annotations/val"
+  val_images: 
+    - "data/processed/v1/images/val_2"  # Example of multiple validation sets
+    - "data/processed/v1/images/val"  # Single or multiple validation sets
+  val_masks: 
+    - "data/processed/v1/annotations/val_2"  # Example of multiple validation masks
+    - "data/processed/v1/annotations/val"  # Single or multiple validation masks
+  test_images: "data/processed/v1/images/test"
+  test_masks: "data/processed/v1/annotations/test"
   model_save_path: "models/unet_model.ckpt"
 
 hyperparameters:
@@ -17,7 +23,7 @@ hyperparameters:
   epochs: 30
   learning_rate: 0.001
   image_size: [512, 512]  # Configurable image size as [height, width]
-  early_stopping_patience: 30  # Number of epochs with no improvement after which training will be stopped
+  early_stopping_patience: 10  # Number of epochs with no improvement after which training will be stopped
   scheduler:
     type: "ExponentialLR"
     # step_size: 5

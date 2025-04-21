@@ -53,7 +53,7 @@ def setup_wandb(config):
 class DebugSampleLogger(pl.Callback):
     """
     A PyTorch Lightning callback to log debug samples (input images, ground truth masks, and predictions)
-    during the validation phase.
+    during the validation phase, supporting multiple validation datasets.
     """
     def __init__(self, use_wandb=True, max_samples=8, frequency=1):
         super().__init__()
@@ -77,19 +77,30 @@ class DebugSampleLogger(pl.Callback):
             images, masks = batch
             # print(images.mean(), images.std())  # Debugging line to check image stats
             outputs = torch.sigmoid(pl_module(images))  # Apply sigmoid activation
-            self.logged_samples.append((images[0:1], masks[0:1], outputs[0:1]))  # Collect only the first sample
+            self.logged_samples.append((images[0:1], masks[0:1], outputs[0:1], dataloader_idx))  # Include dataloader_idx
 
     def on_validation_epoch_end(self, trainer, pl_module):
         # Log samples only if the epoch matches the frequency
         self.epoch_counter += 1
         if self.use_wandb and self.epoch_counter % self.frequency == 0 and self.logged_samples:
-            # Combine all logged samples into batches
-            images = torch.cat([sample[0] for sample in self.logged_samples], dim=0)
-            masks = torch.cat([sample[1] for sample in self.logged_samples], dim=0)
-            outputs = torch.cat([sample[2] for sample in self.logged_samples], dim=0)
-            # Pass all samples at once to log_debug_samples
-            log_debug_samples(images, masks, outputs, max_samples=self.max_samples, prefix="val_")
+            # Group samples by dataloader_idx
+            grouped_samples = {}
+            for sample in self.logged_samples:
+                dataloader_idx = sample[3]
+                if dataloader_idx not in grouped_samples:
+                    grouped_samples[dataloader_idx] = []
+                grouped_samples[dataloader_idx].append(sample[:3])  # Exclude dataloader_idx
+
+            # Log samples for each validation dataset
+            for dataloader_idx, samples in grouped_samples.items():
+                images = torch.cat([sample[0] for sample in samples], dim=0)
+                masks = torch.cat([sample[1] for sample in samples], dim=0)
+                outputs = torch.cat([sample[2] for sample in samples], dim=0)
+                prefix = f"val_sample/dataloader_idx_{dataloader_idx}/"  # Add dataloader_idx to prefix
+                log_debug_samples(images, masks, outputs, max_samples=self.max_samples, prefix=prefix)
+
             self.logged_samples = []  # Clear after logging
+
         # Log learning rate at the end of the epoch
         if self.use_wandb:
             current_lr = trainer.optimizers[0].param_groups[0]['lr']

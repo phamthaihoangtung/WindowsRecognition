@@ -7,7 +7,7 @@ from utils import log_debug_samples
 from segmentation_models_pytorch.losses import DiceLoss
 
 class SegmentationModel(pl.LightningModule):
-    def __init__(self, model_config, learning_rate, scheduler_config, use_wandb):
+    def __init__(self, model_config, learning_rate, scheduler_config):
         super().__init__()
         self.model = smp.Unet(
             encoder_name=model_config["backbone"],
@@ -27,27 +27,25 @@ class SegmentationModel(pl.LightningModule):
         images, masks = batch
         masks = masks.float()  # Ensure masks are float
         outputs = self(images)
-        # print(f"[Training] Images shape: {images.shape}, Masks shape: {masks.shape}, Outputs shape: {outputs.shape}")
         loss = self.loss_fn(outputs, masks)
         self.log("train_loss", loss)
         return loss
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
         images, masks = batch
         masks = masks.float()  # Ensure masks are float
         outputs = self(images)
-        # Apply activation function to outputs
         activated_outputs = torch.sigmoid(outputs)
         loss = self.loss_fn(outputs, masks)
 
-        # Compute IoU using smp.metrics.functional
+        # Compute IoU
         tp, fp, fn, tn = smp_metrics_functional.get_stats(
             activated_outputs, masks.long(), mode="binary", threshold=self.iou_threshold
         )
         iou = smp_metrics_functional.iou_score(tp, fp, fn, tn, reduction="micro-imagewise")
 
-        self.log("val_loss", loss)
-        self.log("val_iou", iou)
+        self.log(f"val_loss", loss)
+        self.log(f"val_iou", iou)
 
         return {"val_loss": loss, "val_iou": iou}
 

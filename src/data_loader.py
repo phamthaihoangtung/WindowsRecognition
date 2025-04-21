@@ -5,6 +5,36 @@ from albumentations.pytorch import ToTensorV2
 from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
 
+def get_transforms(image_size, mode="train"):
+    """
+    Returns the appropriate transforms for training, validation, or testing.
+
+    Args:
+        image_size (tuple): Target image size as (height, width).
+        mode (str): Mode of transformation - "train", "val", or "test".
+
+    Returns:
+        albumentations.Compose: Composed transformations.
+    """
+    if mode == "train":
+        return A.Compose([
+            A.Resize(image_size[0], image_size[1]),
+            A.HorizontalFlip(p=0.5),
+            A.RandomBrightnessContrast(p=0.2),
+            A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.1, rotate_limit=15, p=0.5),
+            A.GaussianBlur(blur_limit=(3, 5), p=0.3),
+            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            ToTensorV2(),
+        ])
+    elif mode in ["val", "test"]:
+        return A.Compose([
+            A.Resize(image_size[0], image_size[1]),
+            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            ToTensorV2(),
+        ])
+    else:
+        raise ValueError(f"Unsupported mode: {mode}")
+
 class SegmentationDataset(Dataset):
     def __init__(self, images_dir, masks_dir, transform=None, classes=1):
         self.images_dir = images_dir
@@ -48,35 +78,24 @@ class SegmentationDataModule(pl.LightningDataModule):
         super().__init__()
         self.train_images = train_images
         self.train_masks = train_masks
-        self.val_images = val_images
-        self.val_masks = val_masks
+        self.val_images = val_images if isinstance(val_images, list) else [val_images]
+        self.val_masks = val_masks if isinstance(val_masks, list) else [val_masks]
         self.train_batch_size = train_batch_size  # Separate train batch size
         self.val_batch_size = val_batch_size      # Separate val batch size
         self.image_size = image_size
         self.classes = classes
 
-        self.train_transform = A.Compose([
-            A.Resize(self.image_size[0], self.image_size[1]),
-            A.HorizontalFlip(p=0.5),
-            A.RandomBrightnessContrast(p=0.2),
-            A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.1, rotate_limit=15, p=0.5),
-            A.GaussianBlur(blur_limit=(3, 5), p=0.3),
-            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-            ToTensorV2(),
-        ])
-        self.val_transform = A.Compose([
-            A.Resize(self.image_size[0], self.image_size[1]),
-            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-            ToTensorV2(),
-        ])
+        self.train_transform = get_transforms(self.image_size, mode="train")
+        self.val_transform = get_transforms(self.image_size, mode="val")
 
     def setup(self, stage=None):
         self.train_dataset = SegmentationDataset(
             self.train_images, self.train_masks, transform=self.train_transform, classes=self.classes
         )
-        self.val_dataset = SegmentationDataset(
-            self.val_images, self.val_masks, transform=self.val_transform, classes=self.classes
-        )
+        self.val_datasets = [
+            SegmentationDataset(val_images, val_masks, transform=self.val_transform, classes=self.classes)
+            for val_images, val_masks in zip(self.val_images, self.val_masks)
+        ]
 
     def train_dataloader(self):
         return DataLoader(
@@ -88,10 +107,13 @@ class SegmentationDataModule(pl.LightningDataModule):
         )
 
     def val_dataloader(self):
-        return DataLoader(
-            self.val_dataset, 
-            batch_size=self.val_batch_size,  # Use val batch size
-            shuffle=False, 
-            num_workers=8,
-            persistent_workers=True
-        )
+        return [
+            DataLoader(
+                val_dataset,
+                batch_size=self.val_batch_size,
+                shuffle=False,
+                num_workers=4,
+                persistent_workers=True,
+            )
+            for val_dataset in self.val_datasets
+        ]
