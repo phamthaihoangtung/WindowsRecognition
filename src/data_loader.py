@@ -18,7 +18,8 @@ def get_transforms(image_size, mode="train"):
     """
     if mode == "train":
         return A.Compose([
-            A.Resize(image_size[0], image_size[1]),
+            A.Resize(1024, 1024),  # Resize to 1024x1024
+            A.RandomCrop(image_size[0], image_size[1]),  # Random crop to image_size
             A.HorizontalFlip(p=0.5),
             A.RandomBrightnessContrast(p=0.2),
             A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.1, rotate_limit=15, p=0.5),
@@ -28,7 +29,8 @@ def get_transforms(image_size, mode="train"):
         ])
     elif mode in ["val", "test"]:
         return A.Compose([
-            A.Resize(image_size[0], image_size[1]),
+            A.Resize(1024, 1024),  # Resize to 1024x1024
+            A.CenterCrop(image_size[0], image_size[1]),  # Center crop to image_size
             A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             ToTensorV2(),
         ])
@@ -102,7 +104,7 @@ class SegmentationDataModule(pl.LightningDataModule):
             self.train_dataset, 
             batch_size=self.train_batch_size,  # Use train batch size
             shuffle=True, 
-            num_workers=8,
+            num_workers=4,
             persistent_workers=True
         )
 

@@ -1,26 +1,26 @@
 logging:
   use_wandb: true  # Set to false to disable wandb logging
   wandb_project: "WindowsRecognition"
-  wandb_experiment: "2_val_sets_200_samples"  # Experiment name for wandb
+  wandb_experiment: "enhance_size"  # Experiment name for wandb
   wandb_mode: "online"  # Set to "online" or "offline"
 
 paths:
-  train_images: "data/processed/sanity_check/images/train"
-  train_masks: "data/processed/sanity_check/annotations/train"
+  train_images: "data/processed/v2/images/train"
+  train_masks: "data/processed/v2/annotations/train"
   val_images: 
-    - "data/processed/v1/images/val_2"  # Example of multiple validation sets
-    - "data/processed/v1/images/val"  # Single or multiple validation sets
+    - "data/processed/v2/images/val_2"  # Example of multiple validation sets
+    - "data/processed/v2/images/val"  # Single or multiple validation sets
   val_masks: 
-    - "data/processed/v1/annotations/val_2"  # Example of multiple validation masks
-    - "data/processed/v1/annotations/val"  # Single or multiple validation masks
-  test_images: "data/processed/v1/images/test"
-  test_masks: "data/processed/v1/annotations/test"
+    - "data/processed/v2/annotations/val_2"  # Example of multiple validation masks
+    - "data/processed/v2/annotations/val"  # Single or multiple validation masks
+  test_images: "data/processed/v2/images/test"
+  test_masks: "data/processed/v2/annotations/test"
   model_save_path: "models/unet_model.ckpt"
 
 hyperparameters:
   train_batch_size: 4  # Separate train batch size
   val_batch_size: 4    # Separate val batch size
-  epochs: 30
+  epochs: 50
   learning_rate: 0.001
   image_size: [512, 512]  # Configurable image size as [height, width]
   early_stopping_patience: 10  # Number of epochs with no improvement after which training will be stopped
