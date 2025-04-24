@@ -18,8 +18,8 @@ def get_transforms(image_size, mode="train"):
     """
     if mode == "train":
         return A.Compose([
-            A.Resize(1024, 1024),  # Resize to 1024x1024
-            A.RandomCrop(image_size[0], image_size[1]),  # Random crop to image_size
+            A.Resize(height=2048, width=2048),  # Ensure height and width are passed correctly
+            A.RandomResizedCrop(size=(image_size[0], image_size[1]), scale=(0.08, 1.0), ratio=(0.75, 1.33)),  # Ensure height and width are passed correctly
             A.HorizontalFlip(p=0.5),
             A.RandomBrightnessContrast(p=0.2),
             A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.1, rotate_limit=15, p=0.5),
@@ -29,8 +29,7 @@ def get_transforms(image_size, mode="train"):
         ])
     elif mode in ["val", "test"]:
         return A.Compose([
-            A.Resize(1024, 1024),  # Resize to 1024x1024
-            A.CenterCrop(image_size[0], image_size[1]),  # Center crop to image_size
+            A.Resize(height=image_size[0], width=image_size[1]),  # Ensure height and width are passed correctly
             A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             ToTensorV2(),
         ])
@@ -98,6 +97,11 @@ class SegmentationDataModule(pl.LightningDataModule):
             SegmentationDataset(val_images, val_masks, transform=self.val_transform, classes=self.classes)
             for val_images, val_masks in zip(self.val_images, self.val_masks)
         ]
+        # val_alt_datasets = [
+        #     SegmentationDataset(val_images, val_masks, transform=get_transforms(self.image_size, mode="val_alt"), classes=self.classes)
+        #     for val_images, val_masks in zip(self.val_images, self.val_masks)
+        # ]
+        # self.val_datasets.extend(val_alt_datasets)  # Append val_alt_datasets to val_datasets
 
     def train_dataloader(self):
         return DataLoader(

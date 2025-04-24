@@ -31,35 +31,53 @@ def load_model(model_path, model_config, device):
     model.to(device)
     return model
 
-def preprocess_image(image, normalize_transform, stride):
+def preprocess_image(image, normalize_transform, patch_size, stride, image_size):
     """
     Preprocess the input image: resize, crop, and normalize.
 
     Args:
         image (np.ndarray): Input RGB image.
         normalize_transform (albumentations.Compose): Normalization transform.
+        patch_size (int): Size of the square patches.
         stride (int): Stride for cropping patches.
+        image_size (tuple): Target size to resize each patch (width, height).
 
     Returns:
         list: List of cropped and normalized image patches.
     """
     original_size = image.shape[:2]
-    resized_image = cv2.resize(image, (1024, 1024))
-    patches = [
-        resized_image[y:y+512, x:x+512]
-        for y in range(0, 1024 - 512 + 1, stride)
-        for x in range(0, 1024 - 512 + 1, stride)
-    ]
-    normalized_patches = [normalize_transform(image=patch)["image"] for patch in patches]
+    resized_image = cv2.resize(image, (1024, 1024))  # Resize to 1024x1024 before patching
+    patches = []
+
+    for y in range(0, 1024 - patch_size + 1, stride):
+        for x in range(0, 1024 - patch_size + 1, stride):
+            patches.append(resized_image[y:y+patch_size, x:x+patch_size])
+
+        # # Handle the rightmost patch if not enough pixels
+        # if (1024 - patch_size) % stride != 0:
+        #     patches.append(resized_image[y:y+patch_size, 1024-patch_size:1024])
+
+    # Handle the bottommost row of patches
+    if (1024 - patch_size) % stride != 0:
+        for x in range(0, 1024 - patch_size + 1, stride):
+            patches.append(resized_image[1024-patch_size:1024, x:x+patch_size])
+
+        # # Handle the bottom-right corner patch
+        # if (1024 - patch_size) % stride != 0:
+        #     patches.append(resized_image[1024-patch_size:1024, 1024-patch_size:1024])
+
+    resized_patches = [cv2.resize(patch, image_size) for patch in patches]
+    normalized_patches = [normalize_transform(image=patch)["image"] for patch in resized_patches]
     return normalized_patches, original_size
 
-def postprocess_mask(patches, original_size, stride):
+def postprocess_mask(patches, original_size, patch_size, stride):
     """
     Merge patches into a single mask and resize to the original image size.
 
     Args:
         patches (list): List of predicted mask patches.
         original_size (tuple): Original size of the input image (height, width).
+        patch_size (int): Size of the square patches.
         stride (int): Stride used during preprocessing.
 
     Returns:
@@ -69,21 +87,33 @@ def postprocess_mask(patches, original_size, stride):
     weight_map = np.zeros((1024, 1024), dtype=np.float32)
 
     idx = 0
-    for y in range(0, 1024 - 512 + 1, stride):
-        for x in range(0, 1024 - 512 + 1, stride):
-            merged_mask[y:y+512, x:x+512] += patches[idx]
-            weight_map[y:y+512, x:x+512] += 1
+    for y in range(0, 1024 - patch_size + 1, stride):
+        for x in range(0, 1024 - patch_size + 1, stride):
+            patch = patches[idx]
+            if patch.shape != (patch_size, patch_size):  # Ensure patch size matches
+                patch = cv2.resize(patch, (patch_size, patch_size), 
+                                #    interpolation=cv2.INTER_CUBIC
+                                   )
+            merged_mask[y:y+patch_size, x:x+patch_size] += patch
+            weight_map[y:y+patch_size, x:x+patch_size] += 1
             idx += 1
 
-    merged_mask /= weight_map  # Average probabilities in overlap areas
-    resized_mask = cv2.resize(merged_mask, (original_size[1], original_size[0]))
+    merged_mask /= np.maximum(weight_map, 1)  # Avoid division by zero
+    resized_mask = cv2.resize(merged_mask, (original_size[1], original_size[0]), 
+                            #   interpolation=cv2.INTER_CUBIC
+                              )
+
+    # # Save the weight map for debugging (adhoc request)
+    # normalized_weight_map = (weight_map / weight_map.max() * 255).astype(np.uint8)
+    # cv2.imwrite(f"debug_weight_map_patch_size_{patch_size}_stride_{stride}.png", normalized_weight_map)
+
     return (resized_mask * 255).astype(np.uint8)  # Scale to 0-255 for saving
 
 def fill_holes_preserving_boundary(binary_mask):
     """
     Fill holes in the binary mask while preserving the outer boundary.
     """
-    kernel = np.ones((100, 100), np.uint8)
+    kernel = np.ones((101, 101), np.uint8)
     contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     boundary_mask = np.zeros_like(binary_mask)
     cv2.drawContours(boundary_mask, contours, -1, 255, thickness=cv2.FILLED)
@@ -98,18 +128,25 @@ def draw_polygons(mask, original_image):
     Args:
         mask (np.ndarray): Binary mask.
         original_image (np.ndarray): Original RGB image.
-        overlay_path (str): Path to save the overlay image.
 
     Returns:
         np.ndarray: Updated binary mask.
     """
     # Smooth the mask using Gaussian Blur
 
-    mask = fill_holes_preserving_boundary(mask)
+    # mask = fill_holes_preserving_boundary(mask)
 
-    smooth_mask = cv2.GaussianBlur(mask, (5, 5), 0)
-    _, binary_smooth_mask = cv2.threshold(smooth_mask, 95, 255, cv2.THRESH_BINARY)
-    
+    # smooth_mask = cv2.GaussianBlur(mask, (5, 5), 0)
+    _, mask = cv2.threshold(mask, 159, 255, cv2.THRESH_BINARY)
+
+    # Save the mask with only boundary contours
+    overlay_original = original_image.copy()
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    for contour in contours:
+        cv2.drawContours(overlay_original, [contour], -1, (255, 0, 0), thickness=2)  # Blue boundary
+
+    binary_smooth_mask = fill_holes_preserving_boundary(mask)
+
     # Find contours
     contours, _ = cv2.findContours(binary_smooth_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     updated_mask = np.zeros_like(mask)
@@ -130,14 +167,14 @@ def draw_polygons(mask, original_image):
 
         approx = cv2.approxPolyDP(contour, epsilon, True)
         cv2.drawContours(updated_mask, [approx], -1, (255), thickness=cv2.FILLED)
-        cv2.drawContours(overlay_image, [approx], -1, (0, 255, 0), thickness=2)  # Green boundary
+        cv2.drawContours(overlay_image, [approx], -1, (0, 255, 0), thickness=3)  # Green boundary
 
     # kernel = np.ones((3, 3), np.uint8)
     # updated_mask = cv2.morphologyEx(updated_mask, cv2.MORPH_CLOSE, kernel)
 
-    return overlay_image
+    return overlay_image, updated_mask, overlay_original
 
-def infer(image, model, device, stride):
+def infer(image, model, device, patch_size_ratio, stride_ratio, image_size):
     """
     Perform inference on an input image.
 
@@ -145,14 +182,20 @@ def infer(image, model, device, stride):
         image (np.ndarray): Input RGB image.
         model (SegmentationModel): Trained segmentation model.
         device (torch.device): Device to perform inference on.
-        stride (int): Stride for cropping patches.
+        patch_size_ratio (float): Ratio of patch size to the image edge.
+        stride_ratio (float): Ratio of stride to the image size.
+        image_size (tuple): Target size to resize each patch (width, height).
 
     Returns:
         np.ndarray: Predicted binary mask.
     """
+    # Calculate patch size and stride based on ratios
+    patch_size = int(1024 * patch_size_ratio)
+    stride = int(1024 * stride_ratio)  # Update stride to be a ratio of the image size
+
     # Preprocess the image
     normalize_transform = Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
-    patches, original_size = preprocess_image(image, normalize_transform, stride)
+    patches, original_size = preprocess_image(image, normalize_transform, patch_size, stride, image_size)
 
     # Perform inference on each patch
     patches = torch.stack([ToTensorV2()(image=patch)["image"] for patch in patches]).to(device)
@@ -162,7 +205,7 @@ def infer(image, model, device, stride):
 
     # Postprocess the mask
     mask_patches = [pred[0] for pred in predictions]  # Extract the first channel
-    final_mask = postprocess_mask(mask_patches, original_size, stride)
+    final_mask = postprocess_mask(mask_patches, original_size, patch_size, stride)
     return final_mask
 
 if __name__ == "__main__":
@@ -173,8 +216,10 @@ if __name__ == "__main__":
     model_path = 'models/unet_model.ckpt'
     model_config = config["model"]
     input_folder = "data/processed/v2/images/test/"
-    output_folder = "data/outputs/v2"
-    stride = config.get("stride", 128)  # Default stride is 256
+    output_folder = "data/outputs/v2_multiscale_sobel/"
+    # patch_size_ratio = config.get("patch_size_ratio", 0.5)  # Default patch size ratio is 0.5
+    # stride_ratio = config.get("stride_ratio", 0.5)  # Default stride ratio is 0.5
+    image_size = tuple(config.get("image_size", (512, 512)))  # Default image size is (512, 512)
 
     # Create output folder if it does not exist
     os.makedirs(output_folder, exist_ok=True)
@@ -186,18 +231,30 @@ if __name__ == "__main__":
     model = load_model(model_path, model_config, device)
 
     # Iterate over all image files in the input folder with progress bar
-    for image_path in tqdm(glob.glob(os.path.join(input_folder, "*.jpg")), desc="Processing images"):
+    for i, image_path in tqdm(enumerate(glob.glob(os.path.join(input_folder, "*.jpg"))), desc="Processing images"):
+        # if i > 2:
+        #     break
+        
         # Prepare output paths
         image_name = os.path.basename(image_path)
         output_path = os.path.join(output_folder, f"{os.path.splitext(image_name)[0]}.png")
         overlay_path = os.path.join(output_folder, f"{os.path.splitext(image_name)[0]}_overlay.png")
-
+        
         # Perform inference
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        mask = infer(image, model, device, stride)
-        overlay_image = draw_polygons(mask, image)
+        
+        mask_1 = infer(image, model, device, patch_size_ratio=0.5, stride_ratio=0.125, image_size=image_size)
+        mask_2 = infer(image, model, device, patch_size_ratio=0.625, stride_ratio=0.125, image_size=image_size)
+        mask_3 = infer(image, model, device, patch_size_ratio=0.75, stride_ratio=0.125, image_size=image_size)
+        mask_4 = infer(image, model, device, patch_size_ratio=0.875, stride_ratio=0.125, image_size=image_size)
+
+        mask = (0.3 * mask_1 + 0.3 * mask_2 + 0.2 * mask_3 + 0.2 * mask_4) # Combne mask with eual weights
+        mask = mask.astype(np.uint8)  
+
+        overlay_image, _, overlay_original = draw_polygons(mask, image)
 
         # Save the output mask
         cv2.imwrite(output_path, mask)  # Save the original binary mask
         cv2.imwrite(overlay_path, cv2.cvtColor(overlay_image, cv2.COLOR_RGB2BGR))
+        cv2.imwrite(os.path.join(output_folder, f"{os.path.splitext(image_name)[0]}_original.png"), cv2.cvtColor(overlay_original, cv2.COLOR_RGB2BGR))

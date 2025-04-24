@@ -64,20 +64,26 @@ def train_model():
         frequency=config["logging"].get("debug_sample_frequency", 2),
     )
 
-    # Initialize the early stopping callback (monitor only the first validation set if multiple sets exist)
-    early_stopping = EarlyStopping(
-        monitor="val_loss/dataloader_idx_0" if isinstance(config["paths"]["val_images"], list) else "val_loss",
-        patience=config["hyperparameters"].get("early_stopping_patience", 5),
-        mode="min",
-    )
+    # Determine validation loss name dynamically
+    val_loss_name = "val_loss/dataloader_idx_0" if isinstance(config["paths"]["val_images"], list) and len(config["paths"]["val_images"]) > 1 else "val_loss"
 
-    # Initialize the model checkpoint callback (monitor only the first validation set if multiple sets exist)
+    # Initialize the early stopping callback if enabled
+    early_stopping = None
+    if config["hyperparameters"].get("enable_early_stopping", True):
+        early_stopping = EarlyStopping(
+            monitor=val_loss_name,
+            patience=config["hyperparameters"].get("early_stopping_patience", 5),
+            mode="min",
+        )
+
+    # Initialize the model checkpoint callback
     checkpoint_callback = ModelCheckpoint(
-        monitor="val_loss/dataloader_idx_0" if isinstance(config["paths"]["val_images"], list) else "val_loss",
+        monitor=val_loss_name,
         dirpath=os.path.dirname(config["paths"]["model_save_path"]),
         filename="best_model",
-        save_top_k=1,
+        save_top_k=1 if early_stopping else -1,  # Save only the best if early stopping is enabled
         mode="min",
+        save_last=True,
     )
 
     # Trainer
@@ -86,7 +92,7 @@ def train_model():
         devices=config["trainer"]["devices"],
         max_epochs=config["hyperparameters"]["epochs"],
         logger=logger,
-        callbacks=[debug_sample_logger, early_stopping, checkpoint_callback],
+        callbacks=[cb for cb in [debug_sample_logger, early_stopping, checkpoint_callback] if cb],
         enable_checkpointing=True,
     )
     trainer.fit(model, data_module)
