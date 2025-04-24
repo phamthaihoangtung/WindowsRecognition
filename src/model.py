@@ -4,7 +4,7 @@ import segmentation_models_pytorch as smp
 import segmentation_models_pytorch.metrics.functional as smp_metrics_functional
 import wandb
 from utils import log_debug_samples
-from segmentation_models_pytorch.losses import DiceLoss
+from loss import get_loss_function
 
 class SegmentationModel(pl.LightningModule):
     def __init__(self, model_config, learning_rate, scheduler_config):
@@ -15,7 +15,7 @@ class SegmentationModel(pl.LightningModule):
             in_channels=model_config["in_channels"],
             classes=model_config["classes"],
         )
-        self.loss_fn = DiceLoss(mode="binary", from_logits=True)
+        self.loss_fn = get_loss_function(loss_type='combined_sobel', mode="binary", from_logits=True)
         self.learning_rate = learning_rate
         self.scheduler_config = scheduler_config
         self.iou_threshold = 0.5  # Threshold for IoU computation

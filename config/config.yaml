@@ -1,20 +1,20 @@
 logging:
   use_wandb: true  # Set to false to disable wandb logging
   wandb_project: "WindowsRecognition"
-  wandb_experiment: "enhance_size"  # Experiment name for wandb
+  wandb_experiment: "multiscale_longer_training_sobel_loss"  # Experiment name for wandb
   wandb_mode: "online"  # Set to "online" or "offline"
 
 paths:
-  train_images: "data/processed/v2/images/train"
-  train_masks: "data/processed/v2/annotations/train"
+  train_images: "data/processed/v3/images/train"
+  train_masks: "data/processed/v3/annotations/train"
   val_images: 
-    - "data/processed/v2/images/val_2"  # Example of multiple validation sets
-    - "data/processed/v2/images/val"  # Single or multiple validation sets
+    - "data/processed/v3/images/val"  # Example of multiple validation sets
+    # - "data/processed/v3/images/val"  # Single or multiple validation sets
   val_masks: 
-    - "data/processed/v2/annotations/val_2"  # Example of multiple validation masks
-    - "data/processed/v2/annotations/val"  # Single or multiple validation masks
-  test_images: "data/processed/v2/images/test"
-  test_masks: "data/processed/v2/annotations/test"
+    - "data/processed/v3/annotations/val"  # Example of multiple validation masks
+    # - "data/processed/v3/annotations/val"  # Single or multiple validation masks
+  test_images: "data/processed/v3/images/test"
+  test_masks: "data/processed/v3/annotations/test"
   model_save_path: "models/unet_model.ckpt"
 
 hyperparameters:
@@ -23,6 +23,7 @@ hyperparameters:
   epochs: 50
   learning_rate: 0.001
   image_size: [512, 512]  # Configurable image size as [height, width]
+  enable_early_stopping: false  # Enable or disable early stopping
   early_stopping_patience: 10  # Number of epochs with no improvement after which training will be stopped
   scheduler:
     type: "ExponentialLR"
