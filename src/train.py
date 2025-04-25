@@ -26,6 +26,10 @@ def train_model():
     # Initialize wandb logger
     logger = setup_wandb(config)
 
+    # Update model save path dynamically based on experiment name
+    model_save_path = f"models/{config['logging']['wandb_experiment']}.ckpt"
+    config["paths"]["model_save_path"] = model_save_path
+
     # Data module
     data_module = SegmentationDataModule(
         train_images=config["paths"]["train_images"],
@@ -79,7 +83,7 @@ def train_model():
     # Initialize the model checkpoint callback
     checkpoint_callback = ModelCheckpoint(
         monitor=val_loss_name,
-        dirpath=os.path.dirname(config["paths"]["model_save_path"]),
+        dirpath=os.path.dirname(model_save_path),
         filename="best_model",
         save_top_k=1 if early_stopping else -1,  # Save only the best if early stopping is enabled
         mode="min",
@@ -98,7 +102,7 @@ def train_model():
     trainer.fit(model, data_module)
 
     # Save final model
-    trainer.save_checkpoint(config["paths"]["model_save_path"])
+    trainer.save_checkpoint(model_save_path)
 
     # Evaluate after training
     print("Evaluating on the test set...")

@@ -18,8 +18,9 @@ def get_transforms(image_size, mode="train"):
     """
     if mode == "train":
         return A.Compose([
-            A.Resize(height=2048, width=2048),  # Ensure height and width are passed correctly
-            A.RandomResizedCrop(size=(image_size[0], image_size[1]), scale=(0.08, 1.0), ratio=(0.75, 1.33)),  # Ensure height and width are passed correctly
+            # A.Resize(height=1600, width=1600),  # Ensure height and width are passed correctly
+            # A.RandomResizedCrop(size=(image_size[0], image_size[1]), scale=(0.08, 1.0), ratio=(0.75, 1.33)),  # Ensure height and width are passed correctly
+            A.Resize(height=image_size[0], width=image_size[1]),  # Ensure height and width are passed correctly
             A.HorizontalFlip(p=0.5),
             A.RandomBrightnessContrast(p=0.2),
             A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.1, rotate_limit=15, p=0.5),
@@ -59,7 +60,8 @@ class SegmentationDataset(Dataset):
         # Process mask based on the number of classes
         if self.classes == 1:
             mask = mask[..., None]  # Add channel dimension for binary segmentation
-            mask = (mask > 0).astype("float32")  # Ensure mask values are in the 0-1 range
+            # mask = (mask > 0).astype("float32")  # Ensure mask values are in the 0-1 range
+            mask = (mask > 0).astype("int")  # Ensure mask values are in the 0-1 range
         else:
             mask = cv2.oneHotEncode(mask, self.classes)  # Example for multi-class (adjust as needed)
 

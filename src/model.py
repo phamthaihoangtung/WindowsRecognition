@@ -3,19 +3,29 @@ import pytorch_lightning as pl
 import segmentation_models_pytorch as smp
 import segmentation_models_pytorch.metrics.functional as smp_metrics_functional
 import wandb
-from utils import log_debug_samples
+# from utils import log_debug_samples
 from loss import get_loss_function
 
 class SegmentationModel(pl.LightningModule):
     def __init__(self, model_config, learning_rate, scheduler_config):
         super().__init__()
-        self.model = smp.Unet(
-            encoder_name=model_config["backbone"],
-            encoder_weights=model_config["encoder_weights"],
-            in_channels=model_config["in_channels"],
-            classes=model_config["classes"],
-        )
-        self.loss_fn = get_loss_function(loss_type='combined_sobel', mode="binary", from_logits=True)
+        if model_config["name"] == "Unet":
+            self.model = smp.Unet(
+                encoder_name=model_config["backbone"],
+                encoder_weights=model_config["encoder_weights"],
+                in_channels=model_config["in_channels"],
+                classes=model_config["classes"],
+            )
+        elif model_config["name"] == "FPN":
+            self.model = smp.FPN(
+                encoder_name=model_config["backbone"],
+                encoder_weights=model_config["encoder_weights"],
+                in_channels=model_config["in_channels"],
+                classes=model_config["classes"],
+            )
+        else:
+            raise ValueError(f"Unsupported model name: {model_config['name']}")
+        self.loss_fn = get_loss_function(loss_type='combined', mode="binary", from_logits=True)
         self.learning_rate = learning_rate
         self.scheduler_config = scheduler_config
         self.iou_threshold = 0.5  # Threshold for IoU computation

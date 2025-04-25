@@ -1,7 +1,7 @@
 logging:
   use_wandb: true  # Set to false to disable wandb logging
   wandb_project: "WindowsRecognition"
-  wandb_experiment: "multiscale_longer_training_sobel_loss"  # Experiment name for wandb
+  wandb_experiment: "base_model"  # Experiment name for wandb
   wandb_mode: "online"  # Set to "online" or "offline"
 
 paths:
@@ -15,12 +15,12 @@ paths:
     # - "data/processed/v3/annotations/val"  # Single or multiple validation masks
   test_images: "data/processed/v3/images/test"
   test_masks: "data/processed/v3/annotations/test"
-  model_save_path: "models/unet_model.ckpt"
+  # model_save_path: "models/fpn_multiscale_sobel_loss.ckpt"  # Use experiment name for model save path
 
 hyperparameters:
   train_batch_size: 4  # Separate train batch size
   val_batch_size: 4    # Separate val batch size
-  epochs: 50
+  epochs: 60
   learning_rate: 0.001
   image_size: [512, 512]  # Configurable image size as [height, width]
   enable_early_stopping: false  # Enable or disable early stopping
@@ -28,11 +28,11 @@ hyperparameters:
   scheduler:
     type: "ExponentialLR"
     # step_size: 5
-    gamma: 0.9 # Decay rate for ExponentialLR
+    gamma: 0.925 # Decay rate for ExponentialLR
 
 model:
   name: "Unet"
-  backbone: "efficientnet-b4"
+  backbone: "efficientnet-b2"  # Backbone for the model
   encoder_weights: "imagenet"  # [imagenet, null] Set to null to not use pre-trained weights 
   in_channels: 3
   classes: 1

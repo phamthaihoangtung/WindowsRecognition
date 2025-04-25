@@ -55,6 +55,7 @@ def evaluate_model(config=None, model=None, test_dataset=None, device="cuda"):
     # Evaluate the model
     with torch.no_grad():
         for images, masks in test_loader:
+            masks = masks.float()  # Ensure masks are float
             images, masks = images.to(device), masks.to(device)  # Move data to the correct device
             outputs = model(images)
             activated_outputs = torch.sigmoid(outputs)

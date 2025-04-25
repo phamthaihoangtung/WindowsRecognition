@@ -143,7 +143,7 @@ def draw_polygons(mask, original_image):
     overlay_original = original_image.copy()
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     for contour in contours:
-        cv2.drawContours(overlay_original, [contour], -1, (255, 0, 0), thickness=2)  # Blue boundary
+        cv2.drawContours(overlay_original, [contour], -1, (255, 0, 0), thickness=3)  # Blue boundary
 
     binary_smooth_mask = fill_holes_preserving_boundary(mask)
 
@@ -168,6 +168,7 @@ def draw_polygons(mask, original_image):
         approx = cv2.approxPolyDP(contour, epsilon, True)
         cv2.drawContours(updated_mask, [approx], -1, (255), thickness=cv2.FILLED)
         cv2.drawContours(overlay_image, [approx], -1, (0, 255, 0), thickness=3)  # Green boundary
+        cv2.drawContours(overlay_original, [approx], -1, (0, 0, 255), thickness=3)  # Red boundary for approx
 
     # kernel = np.ones((3, 3), np.uint8)
     # updated_mask = cv2.morphologyEx(updated_mask, cv2.MORPH_CLOSE, kernel)
@@ -208,6 +209,35 @@ def infer(image, model, device, patch_size_ratio, stride_ratio, image_size):
     final_mask = postprocess_mask(mask_patches, original_size, patch_size, stride)
     return final_mask
 
+def infer_with_tta(image, model, device, patch_size_ratio, stride_ratio, image_size):
+    """
+    Perform inference with Test-Time Augmentation (TTA) using horizontal flip.
+
+    Args:
+        image (np.ndarray): Input RGB image.
+        model (SegmentationModel): Trained segmentation model.
+        device (torch.device): Device to perform inference on.
+        patch_size_ratio (float): Ratio of patch size to the image edge.
+        stride_ratio (float): Ratio of stride to the image size.
+        image_size (tuple): Target size to resize each patch (width, height).
+
+    Returns:
+        np.ndarray: Predicted binary mask with TTA.
+    """
+    # Perform inference on the original image
+    mask_original = infer(image, model, device, patch_size_ratio, stride_ratio, image_size)
+
+    # Perform inference on the horizontally flipped image
+    flipped_image = cv2.flip(image, 1)  # Horizontal flip
+    mask_flipped = infer(flipped_image, model, device, patch_size_ratio, stride_ratio, image_size)
+
+    # Flip the mask back to the original orientation
+    mask_flipped = cv2.flip(mask_flipped, 1)
+
+    # Combine the masks (average)
+    final_mask = 0.5 * mask_original + 0.5 * mask_flipped
+    return final_mask.astype(np.uint8)
+
 if __name__ == "__main__":
     # Load configuration from YAML
     with open("config/config.yaml", "r") as file:
@@ -216,9 +246,8 @@ if __name__ == "__main__":
     model_path = 'models/unet_model.ckpt'
     model_config = config["model"]
     input_folder = "data/processed/v2/images/test/"
-    output_folder = "data/outputs/v2_multiscale_sobel/"
-    # patch_size_ratio = config.get("patch_size_ratio", 0.5)  # Default patch size ratio is 0.5
-    # stride_ratio = config.get("stride_ratio", 0.5)  # Default stride ratio is 0.5
+    output_folder = "data/outputs/v2_multiscale_sobel_tta/"
+    use_tta = config.get("use_tta", True)  # Default to True if not specified
     image_size = tuple(config.get("image_size", (512, 512)))  # Default image size is (512, 512)
 
     # Create output folder if it does not exist
@@ -240,16 +269,23 @@ if __name__ == "__main__":
         output_path = os.path.join(output_folder, f"{os.path.splitext(image_name)[0]}.png")
         overlay_path = os.path.join(output_folder, f"{os.path.splitext(image_name)[0]}_overlay.png")
         
-        # Perform inference
+        # Read and preprocess the image
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        
-        mask_1 = infer(image, model, device, patch_size_ratio=0.5, stride_ratio=0.125, image_size=image_size)
-        mask_2 = infer(image, model, device, patch_size_ratio=0.625, stride_ratio=0.125, image_size=image_size)
-        mask_3 = infer(image, model, device, patch_size_ratio=0.75, stride_ratio=0.125, image_size=image_size)
-        mask_4 = infer(image, model, device, patch_size_ratio=0.875, stride_ratio=0.125, image_size=image_size)
 
-        mask = (0.3 * mask_1 + 0.3 * mask_2 + 0.2 * mask_3 + 0.2 * mask_4) # Combne mask with eual weights
+        # Perform inference with or without TTA
+        infer_function = infer_with_tta if use_tta else infer
+        # mask_1 = infer_function(image, model, device, patch_size_ratio=0.5, stride_ratio=0.125, image_size=image_size)
+        mask_2 = infer_function(image, model, device, patch_size_ratio=0.625, stride_ratio=0.125, image_size=image_size)
+        mask_3 = infer_function(image, model, device, patch_size_ratio=0.75, stride_ratio=0.125, image_size=image_size)
+        mask_4 = infer_function(image, model, device, patch_size_ratio=0.875, stride_ratio=0.125, image_size=image_size)
+
+        mask = (
+                # 0.3 * mask_1 
+                + 0.4 * mask_2 
+                + 0.3 * mask_3 
+                + 0.3 * mask_4
+                )  # Combine mask with equal weights
         mask = mask.astype(np.uint8)  
 
         overlay_image, _, overlay_original = draw_polygons(mask, image)
