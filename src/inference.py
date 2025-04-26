@@ -243,10 +243,10 @@ if __name__ == "__main__":
     with open("config/config.yaml", "r") as file:
         config = yaml.safe_load(file)
 
-    model_path = 'models/unet_model.ckpt'
+    model_path = 'models/base_model.ckpt'
     model_config = config["model"]
     input_folder = "data/processed/v2/images/test/"
-    output_folder = "data/outputs/v2_multiscale_sobel_tta/"
+    output_folder = "data/outputs/base_image/"
     use_tta = config.get("use_tta", True)  # Default to True if not specified
     image_size = tuple(config.get("image_size", (512, 512)))  # Default image size is (512, 512)
 
@@ -276,15 +276,15 @@ if __name__ == "__main__":
         # Perform inference with or without TTA
         infer_function = infer_with_tta if use_tta else infer
         # mask_1 = infer_function(image, model, device, patch_size_ratio=0.5, stride_ratio=0.125, image_size=image_size)
-        mask_2 = infer_function(image, model, device, patch_size_ratio=0.625, stride_ratio=0.125, image_size=image_size)
-        mask_3 = infer_function(image, model, device, patch_size_ratio=0.75, stride_ratio=0.125, image_size=image_size)
-        mask_4 = infer_function(image, model, device, patch_size_ratio=0.875, stride_ratio=0.125, image_size=image_size)
+        # mask_2 = infer_function(image, model, device, patch_size_ratio=0.625, stride_ratio=0.125, image_size=image_size)
+        # mask_3 = infer_function(image, model, device, patch_size_ratio=0.75, stride_ratio=0.125, image_size=image_size)
+        mask_4 = infer_function(image, model, device, patch_size_ratio=1.0, stride_ratio=1.0, image_size=image_size)
 
         mask = (
                 # 0.3 * mask_1 
-                + 0.4 * mask_2 
-                + 0.3 * mask_3 
-                + 0.3 * mask_4
+                # + 0.5 * mask_2 
+                # + 0.5 * mask_3 
+                + 1.0 * mask_4
                 )  # Combine mask with equal weights
         mask = mask.astype(np.uint8)  
 

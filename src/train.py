@@ -4,7 +4,7 @@ import pytorch_lightning as pl
 from dotenv import load_dotenv
 from data_loader import SegmentationDataModule, get_transforms
 from model import SegmentationModel
-from utils import DebugSampleLogger, setup_wandb
+from utils.training import DebugSampleLogger, setup_wandb
 import yaml
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks import ModelCheckpoint  # Import ModelCheckpoint for saving the best model
@@ -27,7 +27,9 @@ def train_model():
     logger = setup_wandb(config)
 
     # Update model save path dynamically based on experiment name
-    model_save_path = f"models/{config['logging']['wandb_experiment']}.ckpt"
+    experiment_name = config['logging']['wandb_experiment']
+    model_save_path = os.path.join("models", experiment_name, "best_model.ckpt")
+    os.makedirs(os.path.dirname(model_save_path), exist_ok=True)  # Ensure the directory exists
     config["paths"]["model_save_path"] = model_save_path
 
     # Data module

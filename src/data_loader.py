@@ -18,8 +18,8 @@ def get_transforms(image_size, mode="train"):
     """
     if mode == "train":
         return A.Compose([
-            # A.Resize(height=1600, width=1600),  # Ensure height and width are passed correctly
-            # A.RandomResizedCrop(size=(image_size[0], image_size[1]), scale=(0.08, 1.0), ratio=(0.75, 1.33)),  # Ensure height and width are passed correctly
+            A.Resize(height=2048, width=2048),  # Ensure height and width are passed correctly
+            A.RandomResizedCrop(size=(image_size[0], image_size[1]), scale=(0.2, 1.0), ratio=(0.75, 1.33)),  # Ensure height and width are passed correctly
             A.Resize(height=image_size[0], width=image_size[1]),  # Ensure height and width are passed correctly
             A.HorizontalFlip(p=0.5),
             A.RandomBrightnessContrast(p=0.2),
@@ -111,7 +111,8 @@ class SegmentationDataModule(pl.LightningDataModule):
             batch_size=self.train_batch_size,  # Use train batch size
             shuffle=True, 
             num_workers=4,
-            persistent_workers=True
+            persistent_workers=True,
+            pin_memory=True,  # Load data into memory for faster access
         )
 
     def val_dataloader(self):
