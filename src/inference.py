@@ -53,18 +53,10 @@ def preprocess_image(image, normalize_transform, patch_size, stride, image_size)
         for x in range(0, 1024 - patch_size + 1, stride):
             patches.append(resized_image[y:y+patch_size, x:x+patch_size])
 
-        # # Handle the rightmost patch if not enough pixels
-        # if (1024 - patch_size) % stride != 0:
-        #     patches.append(resized_image[y:y+patch_size, 1024-patch_size:1024])
-
     # Handle the bottommost row of patches
     if (1024 - patch_size) % stride != 0:
         for x in range(0, 1024 - patch_size + 1, stride):
             patches.append(resized_image[1024-patch_size:1024, x:x+patch_size])
-
-        # # Handle the bottom-right corner patch
-        # if (1024 - patch_size) % stride != 0:
-        #     patches.append(resized_image[1024-patch_size:1024, 1024-patch_size:1024])
 
     resized_patches = [cv2.resize(patch, image_size) for patch in patches]
     normalized_patches = [normalize_transform(image=patch)["image"] for patch in resized_patches]
@@ -91,21 +83,13 @@ def postprocess_mask(patches, original_size, patch_size, stride):
         for x in range(0, 1024 - patch_size + 1, stride):
             patch = patches[idx]
             if patch.shape != (patch_size, patch_size):  # Ensure patch size matches
-                patch = cv2.resize(patch, (patch_size, patch_size), 
-                                #    interpolation=cv2.INTER_CUBIC
-                                   )
+                patch = cv2.resize(patch, (patch_size, patch_size))
             merged_mask[y:y+patch_size, x:x+patch_size] += patch
             weight_map[y:y+patch_size, x:x+patch_size] += 1
             idx += 1
 
     merged_mask /= np.maximum(weight_map, 1)  # Avoid division by zero
-    resized_mask = cv2.resize(merged_mask, (original_size[1], original_size[0]), 
-                            #   interpolation=cv2.INTER_CUBIC
-                              )
-
-    # # Save the weight map for debugging (adhoc request)
-    # normalized_weight_map = (weight_map / weight_map.max() * 255).astype(np.uint8)
-    # cv2.imwrite(f"debug_weight_map_patch_size_{patch_size}_stride_{stride}.png", normalized_weight_map)
+    resized_mask = cv2.resize(merged_mask, (original_size[1], original_size[0]))
 
     return (resized_mask * 255).astype(np.uint8)  # Scale to 0-255 for saving
 
@@ -132,11 +116,6 @@ def draw_polygons(mask, original_image):
     Returns:
         np.ndarray: Updated binary mask.
     """
-    # Smooth the mask using Gaussian Blur
-
-    # mask = fill_holes_preserving_boundary(mask)
-
-    # smooth_mask = cv2.GaussianBlur(mask, (5, 5), 0)
     _, mask = cv2.threshold(mask, 159, 255, cv2.THRESH_BINARY)
 
     # Save the mask with only boundary contours
@@ -169,9 +148,6 @@ def draw_polygons(mask, original_image):
         cv2.drawContours(updated_mask, [approx], -1, (255), thickness=cv2.FILLED)
         cv2.drawContours(overlay_image, [approx], -1, (0, 255, 0), thickness=3)  # Green boundary
         cv2.drawContours(overlay_original, [approx], -1, (0, 0, 255), thickness=3)  # Red boundary for approx
-
-    # kernel = np.ones((3, 3), np.uint8)
-    # updated_mask = cv2.morphologyEx(updated_mask, cv2.MORPH_CLOSE, kernel)
 
     return overlay_image, updated_mask, overlay_original
 
@@ -248,6 +224,7 @@ if __name__ == "__main__":
     input_folder = "data/processed/v2/images/test/"
     output_folder = "data/outputs/base_image/"
     use_tta = config.get("use_tta", True)  # Default to True if not specified
+    combine_patches = config.get("combine_patches", False)  # Default to True if not specified
     image_size = tuple(config.get("image_size", (512, 512)))  # Default image size is (512, 512)
 
     # Create output folder if it does not exist
@@ -261,9 +238,6 @@ if __name__ == "__main__":
 
     # Iterate over all image files in the input folder with progress bar
     for i, image_path in tqdm(enumerate(glob.glob(os.path.join(input_folder, "*.jpg"))), desc="Processing images"):
-        # if i > 2:
-        #     break
-        
         # Prepare output paths
         image_name = os.path.basename(image_path)
         output_path = os.path.join(output_folder, f"{os.path.splitext(image_name)[0]}.png")
@@ -275,18 +249,23 @@ if __name__ == "__main__":
 
         # Perform inference with or without TTA
         infer_function = infer_with_tta if use_tta else infer
-        # mask_1 = infer_function(image, model, device, patch_size_ratio=0.5, stride_ratio=0.125, image_size=image_size)
-        # mask_2 = infer_function(image, model, device, patch_size_ratio=0.625, stride_ratio=0.125, image_size=image_size)
-        # mask_3 = infer_function(image, model, device, patch_size_ratio=0.75, stride_ratio=0.125, image_size=image_size)
-        mask_4 = infer_function(image, model, device, patch_size_ratio=1.0, stride_ratio=1.0, image_size=image_size)
 
-        mask = (
-                # 0.3 * mask_1 
-                # + 0.5 * mask_2 
-                # + 0.5 * mask_3 
-                + 1.0 * mask_4
-                )  # Combine mask with equal weights
-        mask = mask.astype(np.uint8)  
+        if combine_patches:
+            mask_1 = infer_function(image, model, device, patch_size_ratio=0.5, stride_ratio=0.125, image_size=image_size)
+            mask_2 = infer_function(image, model, device, patch_size_ratio=0.625, stride_ratio=0.125, image_size=image_size)
+            mask_3 = infer_function(image, model, device, patch_size_ratio=0.75, stride_ratio=0.125, image_size=image_size)
+            mask_4 = infer_function(image, model, device, patch_size_ratio=1.0, stride_ratio=1.0, image_size=image_size)
+
+            mask = (
+                    0.3 * mask_1 
+                    + 0.3 * mask_2 
+                    + 0.2 * mask_3 
+                    + 0.2 * mask_4
+                    )  # Combine mask with weights
+        else:
+            mask = infer_function(image, model, device, patch_size_ratio=1.0, stride_ratio=1.0, image_size=image_size)
+
+        mask = mask.astype(np.uint8)
 
         overlay_image, _, overlay_original = draw_polygons(mask, image)
 

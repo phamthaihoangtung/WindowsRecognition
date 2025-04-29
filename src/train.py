@@ -68,6 +68,7 @@ def train_model():
     debug_sample_logger = DebugSampleLogger(
         use_wandb=config["logging"]["use_wandb"],
         frequency=config["logging"].get("debug_sample_frequency", 2),
+        max_samples=12,
     )
 
     # Determine validation loss name dynamically

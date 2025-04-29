@@ -5,6 +5,8 @@ from ultralytics import SAM
 from inference import load_model  # Assuming load_model is defined in inference.py
 import yaml  # Import YAML to load configuration
 from ultralytics.models.sam.predict import Predictor  # Import Predictor for SAM inference
+from sam2.build_sam import build_sam2
+from sam2.sam2_image_predictor import SAM2ImagePredictor
 
 def test_sam2_model():
     # Load configuration from YAML

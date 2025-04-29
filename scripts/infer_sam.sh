@@ -1,0 +1,1 @@
+uv run python src/inference_sam.py

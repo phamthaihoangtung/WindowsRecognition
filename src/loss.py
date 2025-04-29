@@ -58,7 +58,7 @@ class CombinedSobelLoss(nn.Module):
         dice = self.dice_loss(outputs, targets)
         ce = self.ce_loss(outputs, targets)
         sobel = self.sobel_loss(outputs, targets)
-        return 0.4 * dice + 0.3 * sobel + 0.3 * ce
+        return 0.55 * dice + 0.2 * sobel + 0.25 * ce
 
 class SobelEdgeClassificationLoss(nn.Module):
     """

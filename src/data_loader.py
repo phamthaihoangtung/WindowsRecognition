@@ -1,5 +1,6 @@
 import os
 import cv2
+import numpy as np
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from torch.utils.data import Dataset, DataLoader
@@ -18,8 +19,8 @@ def get_transforms(image_size, mode="train"):
     """
     if mode == "train":
         return A.Compose([
-            A.Resize(height=2048, width=2048),  # Ensure height and width are passed correctly
-            A.RandomResizedCrop(size=(image_size[0], image_size[1]), scale=(0.2, 1.0), ratio=(0.75, 1.33)),  # Ensure height and width are passed correctly
+            # A.Resize(height=2048, width=2048),  # Ensure height and width are passed correctly
+            # A.RandomResizedCrop(size=(image_size[0], image_size[1]), scale=(0.2, 1.0), ratio=(0.75, 1.33)),  # Ensure height and width are passed correctly
             A.Resize(height=image_size[0], width=image_size[1]),  # Ensure height and width are passed correctly
             A.HorizontalFlip(p=0.5),
             A.RandomBrightnessContrast(p=0.2),
@@ -61,7 +62,7 @@ class SegmentationDataset(Dataset):
         if self.classes == 1:
             mask = mask[..., None]  # Add channel dimension for binary segmentation
             # mask = (mask > 0).astype("float32")  # Ensure mask values are in the 0-1 range
-            mask = (mask > 0).astype("int")  # Ensure mask values are in the 0-1 range
+            mask = (mask > 0).astype(np.uint8)  # Ensure mask values are in the 0-1 range
         else:
             mask = cv2.oneHotEncode(mask, self.classes)  # Example for multi-class (adjust as needed)
 
@@ -112,7 +113,7 @@ class SegmentationDataModule(pl.LightningDataModule):
             shuffle=True, 
             num_workers=4,
             persistent_workers=True,
-            pin_memory=True,  # Load data into memory for faster access
+            # pin_memory=True,  # Load data into memory for faster access
         )
 
     def val_dataloader(self):
