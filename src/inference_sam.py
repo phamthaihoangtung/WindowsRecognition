@@ -13,7 +13,10 @@ from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 import random
 from utils.utils import draw_overlay
-from math import sqrt
+import pytorch_lightning as pl
+# from math import sqrt
+
+pl.seed_everything(0)
 
 def load_ultralytics_sam_model(device):
     """
@@ -465,7 +468,8 @@ def process_contours(image, probs_mask, sam_model: SAM2ImagePredictor, config):
 
     probs_mask = clean_mask(probs_mask)  # Clean the mask before processing
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (31, 31))
+    # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (31, 31))
+    kernel = np.ones((31, 31), np.uint8)  # Kernel for morphological operations
     contours = find_and_filter_contours(probs_mask, config)
 
     refined_mask = np.zeros_like(probs_mask, dtype=np.float32)
@@ -530,7 +534,7 @@ def process_contours(image, probs_mask, sam_model: SAM2ImagePredictor, config):
 
     return refined_mask
 
-def post_process_refined_mask(refined_mask, area_threshold=1000, epsilon=0.01):
+def post_process_refined_mask(refined_mask, area_threshold=1000, epsilon=0.01, prob_thresh=0.5):
     """
     Post-process the refined mask by filtering contours based on area and simplifying them.
 
@@ -542,8 +546,13 @@ def post_process_refined_mask(refined_mask, area_threshold=1000, epsilon=0.01):
     Returns:
         np.ndarray: Post-processed binary mask.
     """
+    # Smooth the mask using Gaussian blur
+    # smoothed_mask = cv2.GaussianBlur(refined_mask, (5, 5), 0)
+
     # Convert mask to binary
-    binary_mask = (refined_mask > 0.5).astype(np.uint8)
+    # binary_mask = (refined_mask > prob_thresh).astype(np.uint8)
+
+    _, binary_mask = cv2.threshold((refined_mask * 255).astype(np.uint8), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
     # Find contours
     contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -555,7 +564,7 @@ def post_process_refined_mask(refined_mask, area_threshold=1000, epsilon=0.01):
         # Filter contours by area
         if cv2.contourArea(contour) >= area_threshold:
             # Simplify the contour
-            approx_contour = cv2.approxPolyDP(contour, sqrt(epsilon * cv2.arcLength(contour, True)), True)
+            approx_contour = cv2.approxPolyDP(contour, epsilon * cv2.arcLength(contour, True), True)
             # Draw the simplified contour on the mask
             cv2.drawContours(post_processed_mask, [approx_contour], -1, 1, thickness=cv2.FILLED)
 
@@ -630,10 +639,10 @@ if __name__ == "__main__":
             # refined_mask = np.mean(refined_masks, axis=0)
 
             # Post-process the refined mask
-            postprocessing_mask = post_process_refined_mask(refined_mask, area_threshold=4000, epsilon=0.01)
+            postprocessing_mask = post_process_refined_mask(refined_mask, area_threshold=4000, epsilon=0.003, prob_thresh=0.8)
 
         # Draw overlay with refined mask
-        refined_overlay = draw_overlay(image, postprocessing_mask > 0.8)
+        refined_overlay = draw_overlay(image, postprocessing_mask)
         cv2.imwrite(output_overlay_path, cv2.cvtColor(refined_overlay, cv2.COLOR_RGB2BGR))
 
         # Save refined mask

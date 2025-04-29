@@ -16,11 +16,11 @@ def apply_otsu_threshold(image: np.ndarray) -> np.ndarray:
     if len(image.shape) != 2:
         raise ValueError("Input image must be a grayscale image.")
     
-    # Apply Gaussian blur
-    blurred_image = cv2.GaussianBlur(image, (21, 21), 0)
+    # # Apply Gaussian blur
+    # blurred_image = cv2.GaussianBlur(image, (21, 21), 0)
     
     # Apply Otsu's thresholding
-    _, binary_image = cv2.threshold(blurred_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    _, binary_image = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     return binary_image
 
 def main():
