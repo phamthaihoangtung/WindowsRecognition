@@ -8,6 +8,8 @@ from albumentations.pytorch import ToTensorV2
 from model import SegmentationModel
 import glob
 from tqdm import tqdm  # Add tqdm for progress bar
+from inference_sam import post_process_refined_mask
+from utils.utils import draw_overlay
 
 def load_model(model_path, model_config, device):
     """
@@ -91,7 +93,8 @@ def postprocess_mask(patches, original_size, patch_size, stride):
     merged_mask /= np.maximum(weight_map, 1)  # Avoid division by zero
     resized_mask = cv2.resize(merged_mask, (original_size[1], original_size[0]))
 
-    return (resized_mask * 255).astype(np.uint8)  # Scale to 0-255 for saving
+    return resized_mask  # Return the resized mask
+    # return (resized_mask * 255).astype(np.uint8)  # Scale to 0-255 for saving
 
 def fill_holes_preserving_boundary(binary_mask):
     """
@@ -214,18 +217,60 @@ def infer_with_tta(image, model, device, patch_size_ratio, stride_ratio, image_s
     final_mask = 0.5 * mask_original + 0.5 * mask_flipped
     return final_mask.astype(np.uint8)
 
+# def post_process_refined_mask(refined_mask, area_threshold_ratio=0.001, epsilon=0.01, prob_thresh=0.5):
+#     """
+#     Post-process the refined mask by filtering contours based on area and simplifying them.
+
+#     Args:
+#         refined_mask (np.ndarray): Refined binary mask.
+#         area_threshold_ratio (float): Minimum area ratio for contours to be retained.o be retained.
+#         epsilon (float): Approximation accuracy for contour simplification.
+#         prob_thresh (float): Probability threshold for binary conversion.
+#     Returns:
+#         np.ndarray: Post-processed binary mask.
+#     """ 
+
+#     # Smooth the mask using Gaussian blur
+#     # smoothed_mask = cv2.GaussianBlur(refined_mask, (5, 5), 0)
+#     image_area = refined_mask.shape[0] * refined_mask.shape[1]
+#     # Convert mask to binaryrea * area_threshold_ratio
+#     # binary_mask = ((refined_mask > prob_thresh)*255).astype(np.uint8)
+#     # Convert mask to binary
+
+#     gray_mask = (refined_mask * 255).astype(np.uint8)
+#     # gray_mask = cv2.GaussianBlur(gray_mask,(21,21),0)
+#     _, binary_mask = cv2.threshold(gray_mask, int(prob_thresh*255), 255, cv2.THRESH_BINARY)
+
+#     # Find contours
+#     contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+#     # Create a blank mask for the post-processed result
+#     post_processed_mask = np.zeros_like(binary_mask)
+
+#     for contour in contours:
+#         # Filter contours by area
+#         if cv2.contourArea(contour) >= area_threshold_ratio * image_area:
+#             # # Simplify the contour
+#             approx_contour = cv2.approxPolyDP(contour, epsilon * cv2.arcLength(contour, True), True)
+#             # # Draw the simplified contour on the mask
+#             cv2.drawContours(post_processed_mask, [approx_contour], -1, 1, thickness=cv2.FILLED)
+#             # cv2.drawContours(post_processed_mask, [contour], -1, 1, thickness=cv2.FILLED)
+
+#     return post_processed_mask, binary_mask
+
+
 if __name__ == "__main__":
     # Load configuration from YAML
-    with open("config/config.yaml", "r") as file:
+    with open("config/config_large.yaml", "r") as file:
         config = yaml.safe_load(file)
 
-    model_path = 'models/base_model.ckpt'
+    model_path = 'models/base_model_large_size_multiscale.ckpt'
     model_config = config["model"]
     input_folder = "data/processed/v2/images/test/"
-    output_folder = "data/outputs/base_image/"
-    use_tta = config.get("use_tta", True)  # Default to True if not specified
+    output_folder = "data/outputs/large_size/"
+    use_tta = config.get("use_tta", False)  # Default to True if not specified
     combine_patches = config.get("combine_patches", False)  # Default to True if not specified
-    image_size = tuple(config.get("image_size", (512, 512)))  # Default image size is (512, 512)
+    image_size = tuple(config.get("image_size", (1024, 1024)))  # Default image size is (512, 512)
 
     # Create output folder if it does not exist
     os.makedirs(output_folder, exist_ok=True)
@@ -264,12 +309,24 @@ if __name__ == "__main__":
                     )  # Combine mask with weights
         else:
             mask = infer_function(image, model, device, patch_size_ratio=1.0, stride_ratio=1.0, image_size=image_size)
+        
+        # print(f"Mask shape: {mask.shape} {mask.dtype} {mask.min()} {mask.max()}")
+        
+        postprocessing_mask = post_process_refined_mask(
+            mask,
+            area_threshold_ratio=0.001,  # Use 0.1% of the image area as the threshold
+            epsilon=0.001,
+            prob_thresh=0.8  # Use 0.5 as the probability threshold for binary conversion
+        )
 
-        mask = mask.astype(np.uint8)
+        # mask = (mask * 255).astype(np.uint8)
 
-        overlay_image, _, overlay_original = draw_polygons(mask, image)
+        # overlay_image, _, overlay_original = draw_polygons(mask, image)
+        overlay_image = draw_overlay(image, postprocessing_mask)
 
         # Save the output mask
-        cv2.imwrite(output_path, mask)  # Save the original binary mask
+        cv2.imwrite(output_path, (mask*255).astype(np.uint8))  # Save the original binary mask
         cv2.imwrite(overlay_path, cv2.cvtColor(overlay_image, cv2.COLOR_RGB2BGR))
-        cv2.imwrite(os.path.join(output_folder, f"{os.path.splitext(image_name)[0]}_original.png"), cv2.cvtColor(overlay_original, cv2.COLOR_RGB2BGR))
+        # cv2.imwrite(os.path.join(output_folder, f"{os.path.splitext(image_name)[0]}_binary.png"), 
+        #             cv2.cvtColor(binary_mask, cv2.COLOR_RGB2BGR))
+        # cv2.imwrite(os.path.join(output_folder, f"{os.path.splitext(image_name)[0]}_original.png"), cv2.cvtColor(overlay_original, cv2.COLOR_RGB2BGR))

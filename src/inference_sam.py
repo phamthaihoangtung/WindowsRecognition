@@ -70,6 +70,10 @@ class PointGenerator:
         self.points = [(random.randint(0, w - 1), random.randint(0, h - 1)) for _ in range(k)]
         self.used_points = set()  # Track used points
 
+        self.prev_fp_mask = None  # Cache for previous false positive mask
+        self.prev_fn_mask = None  # Cache for previous false negative mask
+        self.iou_thresh = 0.85  # IoU threshold to stop point generation
+
     def retrieve_key_points(self, predicted_mask=None, num_points=10):
         """
         Retrieve key points based on false positive and false negative regions.
@@ -83,6 +87,27 @@ class PointGenerator:
         """
         false_positive = (predicted_mask > 0.5) & (self.negative_mask > 0)
         false_negative = (self.positive_mask > 0.5) & (predicted_mask <= 0.5)
+
+        # Calculate IoU with previous masks
+        # If false positive and false negative masks does not change significantly, 
+        # New retrived points can be noised, so we can skip this iteration
+        if self.prev_fp_mask is not None and self.prev_fn_mask is not None:
+            fp_iou = np.sum(false_positive & self.prev_fp_mask) / np.sum(false_positive | self.prev_fp_mask)
+            fn_iou = np.sum(false_negative & self.prev_fn_mask) / np.sum(false_negative | self.prev_fn_mask)
+            if fp_iou > self.iou_thresh and fn_iou > self.iou_thresh:
+                # Cache the condition met count
+                if not hasattr(self, "condition_met_count"):
+                    self.condition_met_count = 0
+                self.condition_met_count += 1
+
+                if self.condition_met_count >= 2:
+                    return {"input_point": [[]], "input_label": [[]]}
+            else:
+                self.condition_met_count = 0  # Reset if condition is not met
+
+        # Update cached masks
+        self.prev_fp_mask = false_positive
+        self.prev_fn_mask = false_negative
 
         fp_points = [(x, y) for x, y in self.points if false_positive[y, x]]
         fn_points = [(x, y) for x, y in self.points if false_negative[y, x]]
@@ -349,7 +374,7 @@ def prepare_sam_input(cropped_mask, kernel, config):
 
 def clean_mask(probs_mask):
     """
-    Clean the probability mask using morphological operations.
+    Clean the probability mask using distance transform and watershed segmentation.
 
     Args:
         probs_mask (np.ndarray): Probability mask.
@@ -360,6 +385,31 @@ def clean_mask(probs_mask):
     kernel = np.ones((5, 5), np.uint8)
     cleaned_mask = cv2.morphologyEx(probs_mask, cv2.MORPH_CLOSE, kernel)
     cleaned_mask = cv2.morphologyEx(cleaned_mask, cv2.MORPH_OPEN, kernel)
+
+    # Threshold the probability mask to binary
+    _, binary_mask = cv2.threshold((cleaned_mask * 255).astype(np.uint8), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    # Compute distance transform
+    dist = cv2.distanceTransform(binary_mask, cv2.DIST_L2, 5)
+
+    # Find peaks by thresholding the distance map
+    _, peaks = cv2.threshold(dist, dist.max() * 0.5, 255, 0)
+    peaks = peaks.astype(np.uint8)
+
+    # Dilate peaks to ensure separation
+    kernel = np.ones((3, 3), np.uint8)
+    peaks = cv2.dilate(peaks, kernel, iterations=1)
+
+    # Marker labeling
+    num_markers, markers = cv2.connectedComponents(peaks)
+
+    # Apply watershed segmentation
+    color_image = cv2.cvtColor(binary_mask, cv2.COLOR_GRAY2BGR)
+    markers = cv2.watershed(color_image, markers)
+
+    # Black out the watershed lines while keeping original probability values
+    cleaned_mask[markers == -1] = 0  # Set boundary regions to 0
+
     return cleaned_mask
 
 def find_and_filter_contours(cleaned_mask, config):
@@ -374,7 +424,12 @@ def find_and_filter_contours(cleaned_mask, config):
         list: Filtered contours.
     """
     contours, _ = cv2.findContours((cleaned_mask > 0.5).astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    min_contour_area = config.get("min_contour_area", 4000)
+    
+    # Calculate area threshold as a ratio of the image size
+    image_area = cleaned_mask.shape[0] * cleaned_mask.shape[1]
+    area_ratio = config.get("min_contour_area_ratio", 0.001)  # Default to 1% of the image area
+    min_contour_area = image_area * area_ratio
+
     filtered_contours = [contour for contour in contours if cv2.contourArea(contour) >= min_contour_area]
     return filtered_contours
 
@@ -469,12 +524,12 @@ def process_contours(image, probs_mask, sam_model: SAM2ImagePredictor, config):
     probs_mask = clean_mask(probs_mask)  # Clean the mask before processing
 
     # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (31, 31))
-    kernel = np.ones((31, 31), np.uint8)  # Kernel for morphological operations
+    kernel = np.ones((15, 15), np.uint8)  # Kernel for morphological operations
     contours = find_and_filter_contours(probs_mask, config)
 
     refined_mask = np.zeros_like(probs_mask, dtype=np.float32)
     sam_consecutive_iterations = config.get("sam_consecutive_iterations", 20)
-    num_sampling_runs = config.get("num_sample_runs", 10)  # Number of times to run the process
+    num_sampling_runs = config.get("num_sample_runs", 5)  # Number of times to run the process
 
     for contour in contours:
         cropped_image, cropped_mask, (x_start, y_start, x_end, y_end) = crop_image_and_mask(image, probs_mask, contour, config)
@@ -486,24 +541,34 @@ def process_contours(image, probs_mask, sam_model: SAM2ImagePredictor, config):
         # Iteratively refine the mask
         refined_masks = []  # Store masks for averaging
 
-        for _ in range(num_sampling_runs):  # Run the process k times
+        for sampling_index in range(num_sampling_runs):  # Run the process k times
             predicted_mask = None
             all_points = {"input_point": [], "input_label": []}
 
             prev_logits = None  # Initialize previous logits
             sam_model.set_image(cropped_image)  # Set the cropped image for SAM
 
-            for i in range(sam_consecutive_iterations):
+            for sam_iter_index in range(sam_consecutive_iterations):
                 if predicted_mask is None:
                     # Use PointGenerator to retrieve random points
-                    new_points = point_generator.retrieve_random_points(num_points=5)
+                    new_points = point_generator.retrieve_random_points(num_points=10)
                 else:
                     # Retrieve key points based on predicted_mask
                     new_points = point_generator.retrieve_key_points(predicted_mask, num_points=5)
 
                 if not new_points["input_point"][0]:  # Stop if no new points
-                    print(f"num iteration: {i}")
+                    print(f"num iteration: {sam_iter_index}")
                     print(f"number of prompted points: {len(all_points['input_point'])}")
+
+                    # Draw points on the cropped image and save the result
+                    debug_image = cropped_image.copy()
+                    for (x, y), label in zip(all_points["input_point"], all_points["input_label"]):
+                        color = (0, 255, 0) if label == 1 else (255, 0, 0)  # Green for positive, Red for negative
+                        cv2.circle(debug_image, (x, y), radius=5, color=color, thickness=-1)
+                    debug_output_path = os.path.join('data/outputs/sam_debug', 
+                                                     f"{os.path.splitext(image_name)[0]}_x_start_{x_start}_y_start_{y_start}_{sampling_index}.png")
+                    cv2.imwrite(debug_output_path, cv2.cvtColor(debug_image, cv2.COLOR_RGB2BGR))
+
                     break
 
                 # Concatenate new points with existing points
@@ -534,25 +599,29 @@ def process_contours(image, probs_mask, sam_model: SAM2ImagePredictor, config):
 
     return refined_mask
 
-def post_process_refined_mask(refined_mask, area_threshold=1000, epsilon=0.01, prob_thresh=0.5):
+def post_process_refined_mask(refined_mask, area_threshold_ratio=0.001, epsilon=0.01, prob_thresh=0.5):
     """
     Post-process the refined mask by filtering contours based on area and simplifying them.
 
     Args:
         refined_mask (np.ndarray): Refined binary mask.
-        area_threshold (int): Minimum area for contours to be retained.
+        area_threshold_ratio (float): Minimum area ratio for contours to be retained.o be retained.
         epsilon (float): Approximation accuracy for contour simplification.
-
+        prob_thresh (float): Probability threshold for binary conversion.
     Returns:
         np.ndarray: Post-processed binary mask.
-    """
+    """ 
+
     # Smooth the mask using Gaussian blur
     # smoothed_mask = cv2.GaussianBlur(refined_mask, (5, 5), 0)
-
-    # Convert mask to binary
+    image_area = refined_mask.shape[0] * refined_mask.shape[1]
+    # Convert mask to binaryrea * area_threshold_ratio
     # binary_mask = (refined_mask > prob_thresh).astype(np.uint8)
+    # Convert mask to binary
 
-    _, binary_mask = cv2.threshold((refined_mask * 255).astype(np.uint8), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    gray_mask = (refined_mask * 255).astype(np.uint8)
+    gray_mask = cv2.GaussianBlur(gray_mask,(7,7),0)
+    _, binary_mask = cv2.threshold(gray_mask, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
     # Find contours
     contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -562,11 +631,26 @@ def post_process_refined_mask(refined_mask, area_threshold=1000, epsilon=0.01, p
 
     for contour in contours:
         # Filter contours by area
-        if cv2.contourArea(contour) >= area_threshold:
-            # Simplify the contour
-            approx_contour = cv2.approxPolyDP(contour, epsilon * cv2.arcLength(contour, True), True)
-            # Draw the simplified contour on the mask
-            cv2.drawContours(post_processed_mask, [approx_contour], -1, 1, thickness=cv2.FILLED)
+        if cv2.contourArea(contour) >= area_threshold_ratio * image_area:
+            # Find convex hull
+            convex_hull = cv2.convexHull(contour)
+
+            # Calculate IoU between the contour and its convex hull
+            contour_mask = np.zeros_like(binary_mask)
+            hull_mask = np.zeros_like(binary_mask)
+            cv2.drawContours(contour_mask, [contour], -1, 1, thickness=cv2.FILLED)
+            cv2.drawContours(hull_mask, [convex_hull], -1, 1, thickness=cv2.FILLED)
+            intersection = np.sum((contour_mask & hull_mask) > 0)
+            union = np.sum((contour_mask | hull_mask) > 0)
+            iou = intersection / union if union > 0 else 0
+
+            # Replace contour with convex hull if IoU exceeds threshold
+            if iou > config.get("convex_hull_iou_threshold", 0.95):
+                cv2.drawContours(post_processed_mask, [convex_hull], -1, 1, thickness=cv2.FILLED)
+            else:
+                # Simplify the contour
+                approx_contour = cv2.approxPolyDP(contour, epsilon * cv2.arcLength(contour, True), True)
+                cv2.drawContours(post_processed_mask, [approx_contour], -1, 1, thickness=cv2.FILLED)
 
     return post_processed_mask
 
@@ -578,7 +662,7 @@ if __name__ == "__main__":
     model_path = 'models/base_model_b4/last.ckpt'
     model_config = config["model"]
     input_folder = "data/processed/v2/images/test/"
-    output_folder = "data/outputs/best_b4_sam_l_cropped_box_interative_refinement_tta_less_aprrox/"
+    output_folder = "data/outputs/best_b4_sam_cropped_box_iterative_refinement_convexhull_polydp"
     use_tta = config.get("use_tta", False)
     k = config.get("num_points", 128)  # Number of points per dimension
     image_size = tuple(config.get("image_size", (512, 512)))
@@ -638,8 +722,15 @@ if __name__ == "__main__":
             # # Take the average of the 5 refined masks
             # refined_mask = np.mean(refined_masks, axis=0)
 
+            # print(f"Refined mask shape: {refined_mask.shape} {refined_mask.dtype} {refined_mask.min()} {refined_mask.max()}")
+
             # Post-process the refined mask
-            postprocessing_mask = post_process_refined_mask(refined_mask, area_threshold=4000, epsilon=0.003, prob_thresh=0.8)
+            postprocessing_mask = post_process_refined_mask(
+                refined_mask,
+                area_threshold_ratio=0.001,  # Use 0.1% of the image area as the threshold
+                epsilon=0.003,
+                # prob_thresh=0.8
+            )
 
         # Draw overlay with refined mask
         refined_overlay = draw_overlay(image, postprocessing_mask)
@@ -649,4 +740,3 @@ if __name__ == "__main__":
         cv2.imwrite(output_mask_path, (refined_mask * 255).astype(np.uint8))
 
         # break  # Remove this line to process all images
-
