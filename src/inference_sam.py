@@ -387,30 +387,64 @@ def clean_mask(probs_mask):
     cleaned_mask = cv2.morphologyEx(cleaned_mask, cv2.MORPH_OPEN, kernel)
 
     # Threshold the probability mask to binary
-    _, binary_mask = cv2.threshold((cleaned_mask * 255).astype(np.uint8), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    _, binary_mask = cv2.threshold((cleaned_mask * 255).astype(np.uint8), 0, 1, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-    # Compute distance transform
-    dist = cv2.distanceTransform(binary_mask, cv2.DIST_L2, 5)
+    # Fill holes inside contours
+    contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    filled_mask = np.zeros_like(binary_mask)
+    cv2.drawContours(filled_mask, contours, -1, 1, thickness=cv2.FILLED)
 
-    # Find peaks by thresholding the distance map
-    _, peaks = cv2.threshold(dist, dist.max() * 0.5, 255, 0)
-    peaks = peaks.astype(np.uint8)
+    # Noise removal
+    opening = cv2.morphologyEx(filled_mask, cv2.MORPH_OPEN, kernel, iterations=2)
 
-    # Dilate peaks to ensure separation
-    kernel = np.ones((3, 3), np.uint8)
-    peaks = cv2.dilate(peaks, kernel, iterations=1)
+    # Sure background area
+    sure_bg = cv2.dilate(opening, kernel, iterations=3)
+
+    # Sure foreground area
+    dist_transform = cv2.distanceTransform(opening, cv2.DIST_L2, 5)
+    _, sure_fg = cv2.threshold(dist_transform, 
+                                #    0.5 * dist_transform.max()
+                                np.percentile(dist_transform[dist_transform>0], 75)
+                                , 1, 0)
+
+    # Finding unknown region
+    sure_fg = np.uint8(sure_fg)
+    unknown = cv2.subtract(sure_bg, sure_fg)
 
     # Marker labeling
-    num_markers, markers = cv2.connectedComponents(peaks)
+    _, markers = cv2.connectedComponents(sure_fg)
+
+    # Add one to all labels so that sure background is not 0, but 1
+    markers = markers + 1
+
+    # Mark the region of unknown with zero
+    markers[unknown == 1] = 0
+
+    # Save markers for debugging
+    debug_markers_path = os.path.join('data/outputs/debug', f"{os.path.splitext(image_name)[0]}_markers_debug.png")
+    os.makedirs(os.path.dirname(debug_markers_path), exist_ok=True)
+    cv2.imwrite(debug_markers_path, (markers * 255 / markers.max()).astype(np.uint8))
 
     # Apply watershed segmentation
-    color_image = cv2.cvtColor(binary_mask, cv2.COLOR_GRAY2BGR)
+    color_image = cv2.cvtColor(filled_mask, cv2.COLOR_GRAY2BGR)
     markers = cv2.watershed(color_image, markers)
 
     # Black out the watershed lines while keeping original probability values
-    cleaned_mask[markers == -1] = 0  # Set boundary regions to 0
+    filled_mask[markers == -1] = 0  # Set boundary regions to 0
 
-    return cleaned_mask
+    # Erode the binary mask by one pixel
+    kernel = np.ones((3, 3), np.uint8)
+    filled_mask = cv2.erode(filled_mask, kernel, iterations=1) 
+
+    filled_mask_2 = cv2.cvtColor(filled_mask.copy()*255, cv2.COLOR_GRAY2BGR)
+    filled_mask_2[markers == -1] = (255, 0, 0)  # Set boundary regions to 0
+
+    # Save cleaned mask for debugging
+    debug_cleaned_mask_path = os.path.join('data/outputs/debug', f"{os.path.splitext(image_name)[0]}_split_objects_debug.png")
+    os.makedirs(os.path.dirname(debug_cleaned_mask_path), exist_ok=True)
+    cv2.imwrite(debug_cleaned_mask_path, (filled_mask_2).astype(np.uint8))
+
+    return filled_mask
 
 def find_and_filter_contours(cleaned_mask, config):
     """
@@ -423,7 +457,7 @@ def find_and_filter_contours(cleaned_mask, config):
     Returns:
         list: Filtered contours.
     """
-    contours, _ = cv2.findContours((cleaned_mask > 0.5).astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(cleaned_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     # Calculate area threshold as a ratio of the image size
     image_area = cleaned_mask.shape[0] * cleaned_mask.shape[1]
@@ -527,13 +561,21 @@ def process_contours(image, probs_mask, sam_model: SAM2ImagePredictor, config):
     kernel = np.ones((15, 15), np.uint8)  # Kernel for morphological operations
     contours = find_and_filter_contours(probs_mask, config)
 
+    # Debug: Draw all contours and save the result
+    debug_contour_image = image.copy()
+    cv2.drawContours(debug_contour_image, contours, -1, (0, 255, 0), 2)  # Green contours
+    debug_contour_path = os.path.join('data/outputs/debug_contours', f"{os.path.splitext(image_name)[0]}_contours_debug.png")
+    print(f"Debugging contours saved at: {debug_contour_path}")
+    cv2.imwrite(debug_contour_path, cv2.cvtColor(debug_contour_image, cv2.COLOR_RGB2BGR))
+
     refined_mask = np.zeros_like(probs_mask, dtype=np.float32)
     sam_consecutive_iterations = config.get("sam_consecutive_iterations", 20)
-    num_sampling_runs = config.get("num_sample_runs", 5)  # Number of times to run the process
+    num_sampling_runs = config.get("num_sample_runs", 10)  # Number of times to run the process
 
     for contour in contours:
         cropped_image, cropped_mask, (x_start, y_start, x_end, y_end) = crop_image_and_mask(image, probs_mask, contour, config)
 
+        sam_model.set_image(cropped_image)  # Set the cropped image for SAM
         # Initialize PointGenerator
         point_generator = PointGenerator(config.get("num_points", 1000), 
                                          cropped_mask=cropped_mask, kernel=kernel, prob_thresh=0.5)
@@ -546,12 +588,11 @@ def process_contours(image, probs_mask, sam_model: SAM2ImagePredictor, config):
             all_points = {"input_point": [], "input_label": []}
 
             prev_logits = None  # Initialize previous logits
-            sam_model.set_image(cropped_image)  # Set the cropped image for SAM
 
             for sam_iter_index in range(sam_consecutive_iterations):
                 if predicted_mask is None:
                     # Use PointGenerator to retrieve random points
-                    new_points = point_generator.retrieve_random_points(num_points=10)
+                    new_points = point_generator.retrieve_random_points(num_points=5)
                 else:
                     # Retrieve key points based on predicted_mask
                     new_points = point_generator.retrieve_key_points(predicted_mask, num_points=5)
@@ -565,7 +606,7 @@ def process_contours(image, probs_mask, sam_model: SAM2ImagePredictor, config):
                     for (x, y), label in zip(all_points["input_point"], all_points["input_label"]):
                         color = (0, 255, 0) if label == 1 else (255, 0, 0)  # Green for positive, Red for negative
                         cv2.circle(debug_image, (x, y), radius=5, color=color, thickness=-1)
-                    debug_output_path = os.path.join('data/outputs/sam_debug', 
+                    debug_output_path = os.path.join('data/outputs/debug_sam', 
                                                      f"{os.path.splitext(image_name)[0]}_x_start_{x_start}_y_start_{y_start}_{sampling_index}.png")
                     cv2.imwrite(debug_output_path, cv2.cvtColor(debug_image, cv2.COLOR_RGB2BGR))
 
