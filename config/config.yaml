@@ -40,3 +40,8 @@ model:
 trainer:
   accelerator: "gpu"  # Use "gpu" for GPU training or "cpu"
   devices: 1          # Number of GPUs to use (set to None for CPU)
+
+inference:
+  model_path: "models/base_model_b4/last.ckpt"  # Path to the model checkpoint for inference
+  refined_segmentation_mode: "contour"
+  use_tta: false  # Use test-time augmentation

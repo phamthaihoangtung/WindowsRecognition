@@ -25,26 +25,27 @@ class WindowsRecognitor:
         with open(config_path, "r") as file:
             self.config = yaml.safe_load(file)
 
-        # self.model_path = 'models/base_model_b4/last.ckpt'
-        self.model_path = f"{Path(__file__).parent}/{self.config["inference"]["model_path"]}"
+        self.model_path = self.config["inference"]["model_path"]
+        self.sam_checkpoint = self.config["inference"].get("sam_checkpoint", "facebook/sam2.1-hiera-large")
                                       
         self.image_size = tuple(self.config["hyperparameters"].get("image_size", (512, 512)))
         self.refined_segmentation_mode = self.config["inference"].get("refined_segmentation_mode", "contour")
+        self.use_tta = self.config["inference"].get("use_tta", False)
+        
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Load models
         self.model = self._load_model(self.model_path, self.config["model"], self.device)
         if self.refined_segmentation_mode == "tiling":
-            self.sam_model = self._load_ultralytics_sam_model(self.device)
+            self.sam_model = self._load_ultralytics_sam_model(self.sam_checkpoint, self.device)
         elif self.refined_segmentation_mode == "contour":
-            self.sam_model = self._load_hugging_face_sam_model(self.device)
+            self.sam_model = self._load_hugging_face_sam_model(self.sam_checkpoint)
 
-    def _load_ultralytics_sam_model(self, device):
-        return SAM(f"{Path(__file__).parent}/models/SAM/sam2.1_l.pt").to(device)
+    def _load_ultralytics_sam_model(self, sam_checkpoint, device):
+        return SAM(sam_checkpoint).to(device)
 
-    def _load_hugging_face_sam_model(self, device):
-        checkpoint = "facebook/sam2.1-hiera-large"
-        return SAM2ImagePredictor.from_pretrained(checkpoint)
+    def _load_hugging_face_sam_model(self, sam_checkpoint):
+        return SAM2ImagePredictor.from_pretrained(sam_checkpoint)
 
     def _load_model(self, model_path, model_config, device):
         model = SegmentationModel.load_from_checkpoint(
