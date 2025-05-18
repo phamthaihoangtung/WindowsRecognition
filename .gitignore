@@ -186,6 +186,7 @@ wandb/
 
 # Ignore all files under models folder
 models/*
+!models/.gitkeep
 
 # Ignore all files under .vscode folder
 .vscode/*
