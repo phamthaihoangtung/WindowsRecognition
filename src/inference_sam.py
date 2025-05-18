@@ -13,10 +13,10 @@ from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 from utils.utils import draw_overlay
 import pytorch_lightning as pl
-from inference.point_generator import PointGenerator
 from inference.post_processor import post_process_refined_mask
 from inference.tiling_processor import process_image_with_tiling
 from inference.contour_processor import process_contours
+from pathlib import Path
 
 
 class WindowsRecognitor:
@@ -25,11 +25,11 @@ class WindowsRecognitor:
         with open(config_path, "r") as file:
             self.config = yaml.safe_load(file)
 
-        self.model_path = 'models/base_model_b4/last.ckpt'
-        
-        self.use_tta = self.config.get("use_tta", False)
-        self.image_size = tuple(self.config.get("image_size", (512, 512)))
-        self.refined_segmentation_mode = self.config.get("refined_segmentation_mode", "contour")
+        # self.model_path = 'models/base_model_b4/last.ckpt'
+        self.model_path = f"{Path(__file__).parent}/{self.config["inference"]["model_path"]}"
+                                      
+        self.image_size = tuple(self.config["hyperparameters"].get("image_size", (512, 512)))
+        self.refined_segmentation_mode = self.config["inference"].get("refined_segmentation_mode", "contour")
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Load models
@@ -40,7 +40,7 @@ class WindowsRecognitor:
             self.sam_model = self._load_hugging_face_sam_model(self.device)
 
     def _load_ultralytics_sam_model(self, device):
-        return SAM("models/SAM/sam2.1_l.pt").to(device)
+        return SAM(f"{Path(__file__).parent}/models/SAM/sam2.1_l.pt").to(device)
 
     def _load_hugging_face_sam_model(self, device):
         checkpoint = "facebook/sam2.1-hiera-large"
