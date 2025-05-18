@@ -14,9 +14,15 @@ Then, follow the steps to configure and activate the environment:
 uv sync
 ```
 
+### SAM2
+```bash
+git submodule update --init --recursive
+bash scripts/install_sam.sh
+```
+
 ## Configuration
 
-Edit the `config/config.yaml` file to set paths, hyperparameters, and model configurations.
+Edit the config under `config` file to set paths, hyperparameters, and model configurations.
 
 ## Training
 
@@ -30,4 +36,11 @@ WANDB_API_KEY=your_wandb_api_key_here
 
 ```bash
 uv run python src/train.py
+```
+
+### Inference
+
+Run the inference server
+```bash
+uv run python src/server.py 
 ```

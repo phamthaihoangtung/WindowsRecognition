@@ -100,6 +100,20 @@ class WindowsRecognitor:
             convex_hull_iou_threshold=0.95,
         )
         return postprocessing_mask
+    
+    def recognize_from_path(self, image_path):
+        """
+        Perform inference on an image from a given path and return the postprocessed mask.
+
+        Args:
+            image_path (str): Path to the input image.
+
+        Returns:
+            np.ndarray: Postprocessed mask.
+        """
+        self.image = cv2.imread(image_path)
+        self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB)
+        return self.recognize(self.image)
 
     def recognize_batch(self, input_folder=None, output_folder=None):
         """
@@ -113,17 +127,14 @@ class WindowsRecognitor:
             output_overlay_path = os.path.join(output_folder, f"{os.path.splitext(image_name)[0]}_overlay.png")
             output_mask_path = os.path.join(output_folder, f"{os.path.splitext(image_name)[0]}_mask.png")
 
-            image = cv2.imread(image_path)
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
             # Get postprocessed mask
-            postprocessing_mask = self.recognize(image)
+            postprocessing_mask = self.recognize_from_path(image_path)
 
             # Save raw probability mask
             cv2.imwrite(output_probs_path, (self.probs_mask * 255).astype(np.uint8))
 
             # Draw overlay with refined mask
-            refined_overlay = draw_overlay(image, postprocessing_mask)
+            refined_overlay = draw_overlay(self.image, postprocessing_mask)
             cv2.imwrite(output_overlay_path, cv2.cvtColor(refined_overlay, cv2.COLOR_RGB2BGR))
 
             # Save refined mask
