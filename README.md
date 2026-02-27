@@ -31,3 +31,6 @@ WANDB_API_KEY=your_wandb_api_key_here
 ```bash
 uv run python src/train.py
 ```
+
+## Architecture
+<img width="1733" height="1057" alt="Architecture" src="https://github.com/user-attachments/assets/f236b8f6-6bc5-4499-9688-5797451e74a9" />
