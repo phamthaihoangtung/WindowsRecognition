@@ -14,9 +14,15 @@ Then, follow the steps to configure and activate the environment:
 uv sync
 ```
 
+### SAM2
+```bash
+git submodule update --init --recursive
+bash scripts/install_sam.sh
+```
+
 ## Configuration
 
-Edit the `config/config.yaml` file to set paths, hyperparameters, and model configurations.
+Edit the config under `config` file to set paths, hyperparameters, and model configurations.
 
 ## Training
 
@@ -34,3 +40,9 @@ uv run python src/train.py
 
 ## Architecture
 <img width="1733" height="1057" alt="Architecture" src="https://github.com/user-attachments/assets/f236b8f6-6bc5-4499-9688-5797451e74a9" />
+### Inference
+
+Run the inference server
+```bash
+uv run python src/server.py 
+```

@@ -30,3 +30,18 @@ def draw_overlay(image, mask, points=None):
                 continue
             cv2.circle(overlay, (x, y), radius=2, color=color, thickness=-1)
     return overlay
+
+def draw_points_on_cropped_region(cropped_image, points, output_path):
+    """
+    Draw points on the cropped region for debugging purposes.
+
+    Args:
+        cropped_image (np.ndarray): Cropped RGB image.
+        points (list): List of points with classification.
+        output_path (str): Path to save the visualization.
+    """
+    debug_image = cropped_image.copy()
+    for x, y, cls in points:
+        color = (0, 255, 0) if cls == "positive" else (255, 0, 0) if cls == "negative" else (255, 255, 0)
+        cv2.circle(debug_image, (x, y), radius=5, color=color, thickness=-1)
+    cv2.imwrite(output_path, cv2.cvtColor(debug_image, cv2.COLOR_RGB2BGR))
