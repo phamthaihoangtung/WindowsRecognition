@@ -190,3 +190,5 @@ models/*
 
 # Ignore all files under .vscode folder
 .vscode/*
+
+.claude/pexels-api.pdf
