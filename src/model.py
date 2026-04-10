@@ -7,7 +7,7 @@ import wandb
 from loss import get_loss_function
 
 class SegmentationModel(pl.LightningModule):
-    def __init__(self, model_config, learning_rate, scheduler_config):
+    def __init__(self, model_config, learning_rate=0.001, scheduler_config=None):
         super().__init__()
         if model_config["name"] == "Unet":
             self.model = smp.Unet(

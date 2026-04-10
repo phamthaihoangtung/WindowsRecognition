@@ -50,7 +50,7 @@ class WindowsRecognitor:
     def _load_model(self, model_path, model_config, device):
         model = SegmentationModel.load_from_checkpoint(
             model_path, map_location=device, model_config=model_config,
-            learning_rate=0.001, scheduler_config=None  # Placeholder values
+            # learning_rate=0.001, scheduler_config=None  # Placeholder values
         )
         model.eval()
         model.to(device)
