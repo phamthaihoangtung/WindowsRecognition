@@ -43,5 +43,8 @@ trainer:
 
 inference:
   model_path: "models/base_model_b4/last.ckpt"  # Path to the model checkpoint for inference
+  coarse_segmentation_mode: "efficientnet"  # "efficientnet" or "sam3"
+  sam3_text_prompt: "A window"
+  sam3_score_threshold: 0.8  # Confidence threshold for SAM3 Turn 2 exemplar boxes
   refined_segmentation_mode: "contour"
   use_tta: false  # Use test-time augmentation

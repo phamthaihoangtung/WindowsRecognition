@@ -8,8 +8,10 @@ def post_process_refined_mask(refined_mask, area_threshold_ratio=0.001, epsilon=
 
     Args:
         refined_mask (np.ndarray): Refined binary mask.
-        area_threshold_ratio (float): Minimum area ratio for contours to be retained.o be retained.
-        epsilon (float): Approximation accuracy for contour simplification.
+        area_threshold_ratio (float): Minimum area ratio for contours to be retained.
+        epsilon (float): Approximation accuracy for Douglas-Peucker contour simplification,
+            as a fraction of the contour arc length. Higher → fewer vertices, coarser polygon;
+            lower → more vertices, closer to original boundary.
         prob_thresh (float): Probability threshold for binary conversion.
     Returns:
         np.ndarray: Post-processed binary mask.
