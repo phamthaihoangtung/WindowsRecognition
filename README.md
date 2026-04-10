@@ -11,14 +11,19 @@ pip install uv
 Then, follow the steps to configure and activate the environment:
 
 ```bash
-uv sync
-```
-
-### SAM2
-```bash
-git submodule update --init --recursive
 bash scripts/install_sam.sh
 ```
+
+This initializes the SAM2 submodule and runs `uv sync` to install all dependencies including SAM2.
+
+### SAM3 (experimental)
+Add `HF_TOKEN=your_token_here` to your `.env` file — the model is gated on HuggingFace.
+
+```bash
+bash scripts/install_sam3.sh
+```
+
+This initializes the SAM3 submodule, authenticates with HuggingFace, and runs `uv sync` to install all dependencies including SAM3.
 
 ## Configuration
 
