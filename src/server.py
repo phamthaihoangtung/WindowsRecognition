@@ -12,8 +12,8 @@ CORS(app)  # Allow cross-origin requests
 # Directory to store processed binary masks
 # PROCESSED_IMAGE_DIR = "processed_images"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-#PROCESSED_IMAGE_DIR = os.path.join(BASE_DIR, "processed_images")
-#UPLOADED_IMAGE_DIR = os.path.join(BASE_DIR, "uploaded_images")
+# PROCESSED_IMAGE_DIR = os.path.join(BASE_DIR, "processed_images")
+# UPLOADED_IMAGE_DIR = os.path.join(BASE_DIR, "uploaded_images")
 PROCESSED_IMAGE_DIR = "D:/server01/processed_images"
 UPLOADED_IMAGE_DIR = "D:/server01/uploaded_images"
 
