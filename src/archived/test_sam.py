@@ -1,97 +1,66 @@
-import cv2  # Import OpenCV for saving masks
-import numpy as np  # Import NumPy for array manipulation
-import torch  # Import PyTorch for model handling
-from ultralytics import SAM
-from inference import load_model  # Assuming load_model is defined in inference.py
-import yaml  # Import YAML to load configuration
-from ultralytics.models.sam.predict import Predictor  # Import Predictor for SAM inference
-from sam2.build_sam import build_sam2
+import argparse
+import cv2
+import numpy as np
+import torch
+import yaml
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 
-def test_sam2_model():
-    # Load configuration from YAML
-    with open("config/config.yaml", "r") as file:
-        config = yaml.safe_load(file)
+SAM_CHECKPOINT = "facebook/sam2.1-hiera-large"
+IMAGE_PATH = "data/interiors_crawled/pexels_3284980.jpg"
+POINT_COORDS = np.array([[100, 150], [200, 250], [300, 350], [400, 450], [450, 400]])
+POINT_LABELS = np.ones(len(POINT_COORDS), dtype=np.int32)
 
-    # Load the base model
+
+def test_sam2_model(use_mask_prompt: bool = False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    base_model = load_model('models/base_model.ckpt', config['model'], device)
 
-    # # Initialize the SAM2 model
-    # model = SAM('models/SAM/sam2.1_t.pt')
-
-    # Example input for testing
-    input_data = {
-        'image': 'data/processed/v3/images/test/_DSC0521.jpg',  # Updated with an example image path
-        'prompt': {
-            'type': 'point',  # Specify the prompt type as 'point'
-            'coordinates': [[(100, 150), (200, 250), (300, 350), (400, 450), (450, 400)]]  # Added more point coordinates (x, y)
-        }
-    }
-
-    # Read image using OpenCV
-    image = cv2.imread(input_data['image'])
-    if image is None:
-        raise FileNotFoundError(f"Image not found at path: {input_data['image']}")
-
-    image = cv2.resize(image, (512, 512))
-
-    # Preprocess image and compute logit
-    image_tensor = torch.from_numpy(image).permute(2, 0, 1).unsqueeze(0).float() / 255.0  # Convert to tensor
-
-    # Normalize by ImageNet statistics
-    imagenet_mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
-    imagenet_std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
-    image_tensor = (image_tensor - imagenet_mean) / imagenet_std
-
-    logit = base_model(image_tensor.to(device))  # Get logit from the base model
-    logit_resized = torch.nn.functional.interpolate(logit, size=(256, 256), mode='bilinear', align_corners=False)  # Resize logit to 256x256
-
-    mask_prompt = logit_resized.squeeze().detach().cpu().numpy()
-
-    # Save logit to a file
-    logit_path = 'data/test_sam/logit_output.npy'
-    np.save(logit_path, mask_prompt > 0.5)
-    print(f"Logit saved to '{logit_path}'")
-
-    # Step 1: Initialize SAM Predictor and model using overrides
-    predictor = Predictor(overrides={"model": "models/SAM/sam2.1_b.pt"})  # Adjust model path as needed
-    predictor.setup_model(verbose=True)  # Enable verbose output during model setup
-
-    # Step 2: Set image
-    img_bgr = cv2.imread(input_data['image'])
+    img_bgr = cv2.imread(IMAGE_PATH)
     if img_bgr is None:
-        raise FileNotFoundError(f"Image not found at path: {input_data['image']}")
+        raise FileNotFoundError(f"Image not found at path: {IMAGE_PATH}")
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
 
-    print("Image shape:", img_rgb.shape)
-    features = predictor.set_image(img_rgb)
+    mask_prompt = None
+    if use_mask_prompt:
+        from inference import load_model
 
-    # 3. Retrieve the preprocessed tensor for inference
-    # 3. Cache features (returns None)
-    predictor.set_image(img_rgb)
+        with open("config/config.yaml", "r") as file:
+            config = yaml.safe_load(file)
 
-    # 4. Preprocess into (1,C,H,W) tensor
-    im_tensor = predictor.preprocess([img_rgb])
+        base_model = load_model("models/base_model.ckpt", config["model"], device)
 
-    # print("Features shape:", features.shape)
+        image = cv2.resize(img_rgb, (512, 512))
+        image_tensor = torch.from_numpy(image).permute(2, 0, 1).unsqueeze(0).float() / 255.0
+        imagenet_mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
+        imagenet_std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+        image_tensor = (image_tensor - imagenet_mean) / imagenet_std
 
-    # Step 3: First inference using points as a prompt
-    points = input_data['prompt']['coordinates']
+        logit = base_model(image_tensor.to(device))
+        logit_resized = torch.nn.functional.interpolate(logit, size=(256, 256), mode="bilinear", align_corners=False)
+        mask_prompt = logit_resized.squeeze().detach().cpu().numpy()
 
-    # Step 4: Refine prediction by using logits as mask prompt
-    refined_masks, refined_scores, refined_logits = predictor.inference(
-        im_tensor,
-        points=points,
-        masks=mask_prompt,  # Use the logits from the previous output as the prompt
-        multimask_output=False
-    )
+        logit_path = "data/test_sam/logit_output.npy"
+        np.save(logit_path, mask_prompt > 0.5)
+        print(f"Logit saved to '{logit_path}'")
 
-    # Save refined masks to files
-    for idx, refined_mask in enumerate(refined_masks):
-        mask_path = f'data/test_sam/refined_mask_{idx}.png'
-        cv2.imwrite(mask_path, (refined_mask * 255).astype(np.uint8))
-        print(f"Refined mask {idx} saved to '{mask_path}'")
+    predictor = SAM2ImagePredictor.from_pretrained(SAM_CHECKPOINT)
+
+    with torch.inference_mode():
+        predictor.set_image(img_rgb)
+        masks, scores, _ = predictor.predict(
+            point_coords=POINT_COORDS,
+            point_labels=POINT_LABELS,
+            mask_input=mask_prompt[None] if mask_prompt is not None else None,
+            multimask_output=False,
+        )
+
+    for idx, mask in enumerate(masks):
+        mask_path = f"data/test_sam/refined_mask_{idx}.png"
+        cv2.imwrite(mask_path, (mask * 255).astype(np.uint8))
+        print(f"Mask {idx} saved to '{mask_path}' (score: {scores[idx]:.3f})")
+
 
 if __name__ == "__main__":
-    test_sam2_model()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--no-mask-prompt", action="store_true", help="Disable mask prompt for SAM inference")
+    args = parser.parse_args()
+    test_sam2_model(use_mask_prompt=not args.no_mask_prompt)
