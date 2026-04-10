@@ -21,11 +21,12 @@ from dotenv import dotenv_values
 from PIL import Image, UnidentifiedImageError
 
 DEFAULT_QUERIES = [
-    "interior room window",
-    "living room large window",
-    "bedroom window daylight",
-    "kitchen window interior",
-    "office interior window",
+    # "interior room window",
+    # "living room large window",
+    # "bedroom window daylight",
+    # "kitchen window interior",
+    # "office interior window",
+    "interior design"
 ]
 
 
@@ -210,6 +211,14 @@ def main() -> None:
     use_unsplash = args.source in ("unsplash", "all")
     use_pexels = args.source in ("pexels", "all")
 
+    # Split target equally when both sources are active
+    if use_unsplash and use_pexels:
+        unsplash_target = args.target // 2
+        pexels_target = args.target
+    else:
+        unsplash_target = args.target
+        pexels_target = args.target
+
     if use_unsplash:
         key = env.get("UNSPLASH_ACCESS_KEY") or os.environ.get("UNSPLASH_ACCESS_KEY")
         if not key:
@@ -217,16 +226,16 @@ def main() -> None:
             if not use_pexels:
                 sys.exit(1)
         else:
-            crawl_unsplash(key, args.queries, out_dir, args.target, args.min_mp, args.max_mp, saved)
+            crawl_unsplash(key, args.queries, out_dir, unsplash_target, args.min_mp, args.max_mp, saved)
 
-    if use_pexels and len(saved) < args.target:
+    if use_pexels and len(saved) < pexels_target:
         key = env.get("PEXELS_API_KEY") or os.environ.get("PEXELS_API_KEY")
         if not key:
             print("ERROR: PEXELS_API_KEY not set in .env", file=sys.stderr)
             if not use_unsplash:
                 sys.exit(1)
         else:
-            crawl_pexels(key, args.queries, out_dir, args.target, args.min_mp, args.max_mp, saved)
+            crawl_pexels(key, args.queries, out_dir, pexels_target, args.min_mp, args.max_mp, saved)
 
     print(f"\nDone. {len(saved)} images saved to {out_dir}/")
 
