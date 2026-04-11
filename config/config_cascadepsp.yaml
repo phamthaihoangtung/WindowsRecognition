@@ -9,6 +9,7 @@ inference:
   sam3_input_size: 1008
   refined_segmentation_mode: "cascadepsp"
   use_tta: false
+  stage2_input_size: 1008  # resize smallest dim before stage 2; null = use original size
   cascadepsp_threshold: 0.5
   cascadepsp_L: 900
   cascadepsp_fast: false

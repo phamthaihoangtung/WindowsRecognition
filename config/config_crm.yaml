@@ -9,6 +9,7 @@ inference:
   sam3_input_size: 1008
   refined_segmentation_mode: "crm"
   use_tta: false
+  stage2_input_size: 2048  # resize smallest dim before stage 2; null = use original size
   crm_checkpoint: "models/crm/model_45705.aspx"
   crm_threshold: 0.5
   crm_scales: [0.25, 0.5, 1.0]

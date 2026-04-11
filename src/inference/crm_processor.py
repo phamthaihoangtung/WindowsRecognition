@@ -73,20 +73,23 @@ def process_with_crm(image, probs_mask, crm_model, config):
     coord = _make_coord((H, W)).to(device)  # (H*W, 2)
     cell = torch.tensor([2 / H, 2 / W], device=device).unsqueeze(0).expand(H * W, -1)  # (H*W, 2)
 
-    preds = []
-    transferCoord = None
-    transferFeat = None
+    # seg_t is updated after each scale (iterative refinement)
+    cur_seg = seg_t.unsqueeze(0)  # (1, 1, H, W)
 
     with torch.no_grad():
         for s in scales:
             sH = max(1, int(H * s))
             sW = max(1, int(W * s))
             im_s = torch.nn.functional.interpolate(
-                im_t.unsqueeze(0), size=(sH, sW), mode="bilinear", align_corners=False
+                im_t.unsqueeze(0), size=(sH, sW), mode="bilinear", align_corners=True
             )
             seg_s = torch.nn.functional.interpolate(
-                seg_t.unsqueeze(0), size=(sH, sW), mode="bilinear", align_corners=False
+                cur_seg, size=(sH, sW), mode="bilinear", align_corners=True
             )
+
+            # Reset transfer cache for each scale
+            transferCoord = None
+            transferFeat = None
 
             coord_chunks = coord.split(memory_chunk, dim=0)
             cell_chunks = cell.split(memory_chunk, dim=0)
@@ -105,9 +108,12 @@ def process_with_crm(image, probs_mask, crm_model, config):
                 else:
                     out_dict = out
                 pred_parts.append(out_dict["pred_224"].squeeze(0))  # (chunk, 1)
-            preds.append(torch.cat(pred_parts, dim=0).view(H, W))  # (H, W)
 
-    refined = torch.stack(preds).mean(dim=0).cpu().numpy()
-    # Model output is logits — apply sigmoid then threshold to binary 0/1
-    refined = 1.0 / (1.0 + np.exp(-refined))
+            # pred_224 is already in [0, 1] — no sigmoid needed
+            pred = torch.cat(pred_parts, dim=0).view(H, W)  # (H, W)
+
+            # Update seg for next scale: convert [0,1] prediction to [-1,1]
+            cur_seg = ((pred.unsqueeze(0).unsqueeze(0) - 0.5) * 2)  # (1, 1, H, W)
+
+    refined = pred.cpu().numpy()
     return (refined >= 0.5).astype(np.float32)

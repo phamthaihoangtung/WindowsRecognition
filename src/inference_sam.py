@@ -70,8 +70,15 @@ class WindowsRecognitor:
             image (np.ndarray): Input RGB image (H, W, 3) uint8.
 
         Returns:
-            np.ndarray: Probability mask (H, W) float32 in [0, 1].
+            np.ndarray: Probability mask (H, W) float32 in [0, 1] at original resolution.
         """
+        orig_h, orig_w = image.shape[:2]
+        input_size = self.config["inference"].get("sam3_input_size", None)
+        if input_size is not None:
+            scale = input_size / min(orig_h, orig_w)
+            new_h, new_w = int(round(orig_h * scale)), int(round(orig_w * scale))
+            image = cv2.resize(image, (new_w, new_h))
+
         img_h, img_w = image.shape[:2]
         pil_image = PILImage.fromarray(image)
         text_prompt = self.config["inference"].get("sam3_text_prompt", "A window")
@@ -104,6 +111,9 @@ class WindowsRecognitor:
                 continue
             mask_np = mask.squeeze().detach().cpu().numpy().astype(bool)
             probs = np.where(mask_np, np.maximum(probs, score_val), probs)
+
+        if input_size is not None:
+            probs = cv2.resize(probs, (orig_w, orig_h))
 
         return probs
 
@@ -176,15 +186,29 @@ class WindowsRecognitor:
         if not self.probs_mask.any():
             return np.zeros(image.shape[:2], dtype=np.float32)
 
+        orig_h, orig_w = image.shape[:2]
+        stage2_size = self.config["inference"].get("stage2_input_size", None)
+        if stage2_size is not None:
+            scale = stage2_size / min(orig_h, orig_w)
+            s2_h, s2_w = int(round(orig_h * scale)), int(round(orig_w * scale))
+            stage2_image = cv2.resize(image, (s2_w, s2_h))
+            stage2_probs = cv2.resize(self.probs_mask, (s2_w, s2_h))
+        else:
+            stage2_image, stage2_probs = image, self.probs_mask
+
         if self.refined_segmentation_mode == "tiling":
-            refined_mask = process_image_with_tiling(image, self.probs_mask, self.sam_model, self.config, self.device)
+            refined_mask = process_image_with_tiling(stage2_image, stage2_probs, self.sam_model, self.config, self.device)
         elif self.refined_segmentation_mode == "contour":
-            refined_mask = process_contours(image, self.probs_mask, self.sam_model, self.config)
+            refined_mask = process_contours(stage2_image, stage2_probs, self.sam_model, self.config)
         elif self.refined_segmentation_mode == "cascadepsp":
-            refined_mask = process_with_cascadepsp(image, self.probs_mask, self.sam_model, self.config)
-            return (refined_mask >= 0.5).astype(np.float32)
+            refined_mask = process_with_cascadepsp(stage2_image, stage2_probs, self.sam_model, self.config)
         elif self.refined_segmentation_mode == "crm":
-            refined_mask = process_with_crm(image, self.probs_mask, self.sam_model, self.config["inference"])
+            refined_mask = process_with_crm(stage2_image, stage2_probs, self.sam_model, self.config["inference"])
+
+        if stage2_size is not None:
+            refined_mask = cv2.resize(refined_mask.astype(np.float32), (orig_w, orig_h))
+
+        if self.refined_segmentation_mode in ("cascadepsp", "crm"):
             return (refined_mask >= 0.5).astype(np.float32)
 
         postprocessing_mask = post_process_refined_mask(
@@ -236,10 +260,14 @@ class WindowsRecognitor:
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run batch SAM inference with a configurable refinement model.")
+    parser.add_argument("--config", required=True, help="Path to the YAML config file.")
+    parser.add_argument("--input", required=True, help="Path to the input image folder.")
+    parser.add_argument("--output", required=True, help="Path to the output folder.")
+    args = parser.parse_args()
+
     pl.seed_everything(0)
-
-    input_folder = "data/official_test"
-    output_folder = "data/outputs/official_test_sam3_crm"
-
-    recognitor = WindowsRecognitor("config/config_crm.yaml")
-    recognitor.recognize_batch(input_folder, output_folder)
+    recognitor = WindowsRecognitor(args.config)
+    recognitor.recognize_batch(args.input, args.output)
