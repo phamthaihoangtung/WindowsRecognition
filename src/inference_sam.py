@@ -8,9 +8,12 @@ from albumentations.pytorch import ToTensorV2
 from model import SegmentationModel
 from tqdm import tqdm
 import glob
+from PIL import Image as PILImage
 from ultralytics import SAM
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
+from sam3.model_builder import build_sam3_image_model
+from sam3.model.sam3_image_processor import Sam3Processor
 from utils.utils import draw_overlay
 import pytorch_lightning as pl
 from inference.post_processor import post_process_refined_mask
@@ -25,21 +28,74 @@ class WindowsRecognitor:
         with open(config_path, "r") as file:
             self.config = yaml.safe_load(file)
 
-        self.model_path = self.config["inference"]["model_path"]
+        self.model_path = self.config["inference"].get("model_path", None)
         self.sam_checkpoint = self.config["inference"].get("sam_checkpoint", "facebook/sam2.1-hiera-large")
-                                      
+
         self.image_size = tuple(self.config["hyperparameters"].get("image_size", (512, 512)))
+        self.coarse_segmentation_mode = self.config["inference"].get("coarse_segmentation_mode", "efficientnet")
         self.refined_segmentation_mode = self.config["inference"].get("refined_segmentation_mode", "contour")
         self.use_tta = self.config["inference"].get("use_tta", False)
-        
+
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # Load models
-        self.model = self._load_model(self.model_path, self.config["model"], self.device)
+        # Load coarse segmentation model
+        if self.coarse_segmentation_mode == "sam3":
+            self.sam3_model, self.sam3_processor = self._load_sam3_model()
+        else:
+            self.model = self._load_model(self.model_path, self.config["model"], self.device)
+
+        # Load SAM2/SAM refinement model
         if self.refined_segmentation_mode == "tiling":
             self.sam_model = self._load_ultralytics_sam_model(self.sam_checkpoint, self.device)
         elif self.refined_segmentation_mode == "contour":
             self.sam_model = self._load_hugging_face_sam_model(self.sam_checkpoint)
+
+    def _load_sam3_model(self):
+        model = build_sam3_image_model()
+        processor = Sam3Processor(model)
+        return model, processor
+
+    def _infer_sam3(self, image):
+        """
+        Single-pass SAM3 inference on an RGB image.
+
+        Args:
+            image (np.ndarray): Input RGB image (H, W, 3) uint8.
+
+        Returns:
+            np.ndarray: Probability mask (H, W) float32 in [0, 1].
+        """
+        img_h, img_w = image.shape[:2]
+        pil_image = PILImage.fromarray(image)
+        text_prompt = self.config["inference"].get("sam3_text_prompt", "A window")
+        score_threshold = self.config["inference"].get("sam3_score_threshold", 0.8)
+
+        state = self.sam3_processor.set_image(pil_image)
+
+        # Turn 1: text prompt only
+        output = self.sam3_processor.set_text_prompt(state=state, prompt=text_prompt)
+
+        # Turn 2: add high-confidence detections as exemplar prompts; skip if none found
+        high_conf = [(s, b) for s, b in zip(output["scores"], output["boxes"]) if s > score_threshold]
+        if high_conf:
+            self.sam3_processor.reset_all_prompts(state)
+            self.sam3_processor.set_text_prompt(state=state, prompt=text_prompt)
+            for _, box in high_conf:
+                x1, y1, x2, y2 = box.tolist()
+                cx, cy = (x1 + x2) / 2 / img_w, (y1 + y2) / 2 / img_h
+                w, h = (x2 - x1) / img_w, (y2 - y1) / img_h
+                output = self.sam3_processor.add_geometric_prompt(
+                    box=[cx, cy, w, h], label=True, state=state
+                )
+
+        # Combine N instance masks into a single score-weighted probability map
+        probs = np.zeros((img_h, img_w), dtype=np.float32)
+        for mask, score in zip(output["masks"], output["scores"]):
+            mask_np = mask.squeeze().detach().cpu().numpy().astype(bool)
+            score_val = float(score)
+            probs = np.where(mask_np, np.maximum(probs, score_val), probs)
+
+        return probs
 
     def _load_ultralytics_sam_model(self, sam_checkpoint, device):
         return SAM(sam_checkpoint).to(device)
@@ -64,15 +120,23 @@ class WindowsRecognitor:
         with torch.no_grad():
             probs = torch.sigmoid(self.model(tensor_image)).squeeze(0).cpu().numpy()
 
-        if self.use_tta:
-            flipped_image = cv2.flip(resized_image, 1)
-            flipped_tensor_image = ToTensorV2()(image=normalize_transform(image=flipped_image)["image"])["image"].unsqueeze(0).to(self.device)
-            with torch.no_grad():
-                flipped_probs = torch.sigmoid(self.model(flipped_tensor_image)).squeeze(0).cpu().numpy()
-            flipped_probs = np.flip(flipped_probs, axis=2)
-            probs = np.mean([probs, flipped_probs], axis=0)
-
         return probs
+
+    def _coarse_infer(self, image):
+        """
+        Run coarse segmentation for a single image (no TTA).
+
+        Args:
+            image (np.ndarray): Input RGB image (H, W, 3).
+
+        Returns:
+            np.ndarray: Probability mask (H, W) float32 in [0, 1] at original resolution.
+        """
+        if self.coarse_segmentation_mode == "sam3":
+            return self._infer_sam3(image)
+        else:
+            probs = self._infer(image).squeeze(0)
+            return cv2.resize(probs, (image.shape[1], image.shape[0]))
 
     def recognize(self, image):
         """
@@ -84,9 +148,15 @@ class WindowsRecognitor:
         Returns:
             np.ndarray: Postprocessed mask.
         """
-        # Perform inference
-        self.probs_mask = self._infer(image).squeeze(0)
-        self.probs_mask = cv2.resize(self.probs_mask, (image.shape[1], image.shape[0]))
+        # Perform coarse inference
+        self.probs_mask = self._coarse_infer(image)
+        if self.use_tta:
+            flipped = cv2.flip(image, 1)
+            flipped_probs = np.flip(self._coarse_infer(flipped), axis=1)
+            self.probs_mask = np.mean([self.probs_mask, flipped_probs], axis=0)
+
+        if not self.probs_mask.any():
+            return np.zeros(image.shape[:2], dtype=np.float32)
 
         if self.refined_segmentation_mode == "tiling":
             refined_mask = process_image_with_tiling(image, self.probs_mask, self.sam_model, self.config, self.device)
@@ -144,8 +214,8 @@ class WindowsRecognitor:
 if __name__ == "__main__":
     pl.seed_everything(0)
 
-    input_folder = "data/processed/v2/images/test/"
-    output_folder = "data/outputs/best_b4_sam_cropped_box_iterative_refinement_convexhull_polydp_"
+    input_folder = "data/interiors_crawled"
+    output_folder = "data/outputs/interiors_crawled_sam3"
 
-    recognitor = WindowsRecognitor("config/config.yaml")
+    recognitor = WindowsRecognitor("config/config_sam3.yaml")
     recognitor.recognize_batch(input_folder, output_folder)
