@@ -63,22 +63,38 @@ class WindowsRecognitorSam3:
         """
         text_prompt = self.config["inference"].get("sam3_text_prompt", "A window")
         score_threshold = self.config["inference"].get("sam3_score_threshold", 0.8)
+        sam3_input_size = self.config["inference"].get("sam3_input_size", 1008)
         img_h, img_w = image.shape[:2]
 
-        cleanup = False
-        if image_path is None:
+        # Resize so the smallest dimension = sam3_input_size. This caps the
+        # H_video × W_video allocation in _apply_object_wise_non_overlapping_constraints
+        # (which allocates N_objects × H × W float32 tensors at original resolution).
+        scale = min(img_h, img_w) / sam3_input_size
+        if scale > 1.0:
+            s1_h = round(img_h / scale)
+            s1_w = round(img_w / scale)
+            s1_image = cv2.resize(image, (s1_w, s1_h), interpolation=cv2.INTER_AREA)
+        else:
+            scale = 1.0
+            s1_h, s1_w = img_h, img_w
+            s1_image = image
+
+        # Stage 1 always needs a temp file if we resized (original path has full-res)
+        s1_cleanup = False
+        s1_path = image_path
+        if scale > 1.0 or image_path is None:
             tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
-            image_path = tmp.name
+            s1_path = tmp.name
             tmp.close()
-            cv2.imwrite(image_path, cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
-            cleanup = True
+            cv2.imwrite(s1_path, cv2.cvtColor(s1_image, cv2.COLOR_RGB2BGR))
+            s1_cleanup = True
 
         session_id = None
         instances = []
         try:
             response = self.predictor.handle_request({
                 "type": "start_session",
-                "resource_path": image_path,
+                "resource_path": s1_path,
             })
             session_id = response["session_id"]
 
@@ -89,7 +105,7 @@ class WindowsRecognitorSam3:
                 "frame_index": 0,
                 "text": text_prompt,
             })
-            instances = self._parse_outputs(response["outputs"], img_h, img_w)
+            instances = self._parse_outputs(response["outputs"], s1_h, s1_w)
 
             # Turn 2: one add_prompt call per high-confidence detection (API
             # only accepts a single box per call); accumulate all results.
@@ -98,10 +114,10 @@ class WindowsRecognitorSam3:
                 turn2_instances = []
                 for hc_inst in high_conf:
                     box_norm = [
-                        hc_inst["box"][0] / img_w,
-                        hc_inst["box"][1] / img_h,
-                        (hc_inst["box"][2] - hc_inst["box"][0]) / img_w,
-                        (hc_inst["box"][3] - hc_inst["box"][1]) / img_h,
+                        hc_inst["box"][0] / s1_w,
+                        hc_inst["box"][1] / s1_h,
+                        (hc_inst["box"][2] - hc_inst["box"][0]) / s1_w,
+                        (hc_inst["box"][3] - hc_inst["box"][1]) / s1_h,
                     ]
                     response = self.predictor.handle_request({
                         "type": "add_prompt",
@@ -112,7 +128,7 @@ class WindowsRecognitorSam3:
                         "bounding_box_labels": [1],
                     })
                     turn2_instances.extend(
-                        self._parse_outputs(response["outputs"], img_h, img_w)
+                        self._parse_outputs(response["outputs"], s1_h, s1_w)
                     )
                 if turn2_instances:
                     instances = turn2_instances
@@ -123,8 +139,17 @@ class WindowsRecognitorSam3:
                     "type": "close_session",
                     "session_id": session_id,
                 })
-            if cleanup:
-                os.unlink(image_path)
+            if s1_cleanup:
+                os.unlink(s1_path)
+
+        # Scale boxes and masks back to original resolution
+        if scale > 1.0:
+            for inst in instances:
+                inst["box"] = [coord * scale for coord in inst["box"]]
+                inst["mask"] = cv2.resize(
+                    inst["mask"].astype(np.uint8), (img_w, img_h),
+                    interpolation=cv2.INTER_NEAREST,
+                ).astype(bool)
 
         return instances
 
