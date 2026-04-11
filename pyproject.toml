@@ -24,8 +24,12 @@ dependencies = [
     "sam-2",
     "sam3",
     "einops",
-    "pycocotools"
+    "pycocotools",
+    "cc-torch",
 ]
+
+[tool.uv]
+no-build-isolation-package = ["cc-torch"]
 
 [tool.uv.sources]
 torch = [
@@ -36,7 +40,7 @@ torchvision = [
 ]
 sam-2 = { path = "sam2", editable = true }
 sam3 = { path = "sam3", editable = true }
-
+cc-torch = { git = "https://github.com/ronghanghu/cc_torch.git" }
 
 [[tool.uv.index]]
 name = "pytorch-cu126"

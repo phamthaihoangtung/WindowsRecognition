@@ -145,6 +145,11 @@ wheels = [
 ]
 
 [[package]]
+name = "cc-torch"
+version = "0.2"
+source = { git = "https://github.com/ronghanghu/cc_torch.git#446e9360ed10d3c8d03925ccb5f220ccb62009de" }
+
+[[package]]
 name = "certifi"
 version = "2025.1.31"
 source = { registry = "https://pypi.org/simple" }
@@ -2129,6 +2134,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "albumentations" },
+    { name = "cc-torch" },
     { name = "dotenv" },
     { name = "einops" },
     { name = "flask" },
@@ -2153,6 +2159,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "albumentations", specifier = ">=2.0.5" },
+    { name = "cc-torch", git = "https://github.com/ronghanghu/cc_torch.git" },
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "einops" },
     { name = "flask", specifier = ">=3.1.1" },

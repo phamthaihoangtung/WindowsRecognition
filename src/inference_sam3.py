@@ -91,28 +91,31 @@ class WindowsRecognitorSam3:
             })
             instances = self._parse_outputs(response["outputs"], img_h, img_w)
 
-            # Turn 2: high-confidence detections as exemplar boxes
+            # Turn 2: one add_prompt call per high-confidence detection (API
+            # only accepts a single box per call); accumulate all results.
             high_conf = [inst for inst in instances if inst["score"] > score_threshold]
             if high_conf:
-                # boxes_xywh: [x_min_norm, y_min_norm, w_norm, h_norm]
-                exemplar_boxes = [
-                    [
-                        inst["box"][0] / img_w,
-                        inst["box"][1] / img_h,
-                        (inst["box"][2] - inst["box"][0]) / img_w,
-                        (inst["box"][3] - inst["box"][1]) / img_h,
+                turn2_instances = []
+                for hc_inst in high_conf:
+                    box_norm = [
+                        hc_inst["box"][0] / img_w,
+                        hc_inst["box"][1] / img_h,
+                        (hc_inst["box"][2] - hc_inst["box"][0]) / img_w,
+                        (hc_inst["box"][3] - hc_inst["box"][1]) / img_h,
                     ]
-                    for inst in high_conf
-                ]
-                response = self.predictor.handle_request({
-                    "type": "add_prompt",
-                    "session_id": session_id,
-                    "frame_index": 0,
-                    "text": text_prompt,
-                    "bounding_boxes": exemplar_boxes,
-                    "bounding_box_labels": [1] * len(exemplar_boxes),
-                })
-                instances = self._parse_outputs(response["outputs"], img_h, img_w)
+                    response = self.predictor.handle_request({
+                        "type": "add_prompt",
+                        "session_id": session_id,
+                        "frame_index": 0,
+                        "text": text_prompt,
+                        "bounding_boxes": [box_norm],
+                        "bounding_box_labels": [1],
+                    })
+                    turn2_instances.extend(
+                        self._parse_outputs(response["outputs"], img_h, img_w)
+                    )
+                if turn2_instances:
+                    instances = turn2_instances
 
         finally:
             if session_id is not None:
@@ -190,7 +193,9 @@ class WindowsRecognitorSam3:
             return np.zeros(image.shape[:2], dtype=np.float32)
 
         # Stage 2
-        refined_mask = process_instances_sam3(image, instances, self.predictor, inf_config)
+        refined_mask = process_instances_sam3(
+            image, instances, self.predictor, inf_config, image_path=image_path
+        )
 
         # Stage 3
         postprocessing_mask = post_process_refined_mask(
@@ -217,7 +222,7 @@ class WindowsRecognitorSam3:
             image_name = os.path.basename(image_path)
             stem = os.path.splitext(image_name)[0]
             output_probs_path = os.path.join(output_folder, f"{stem}_probs.png")
-            output_overlay_path = os.path.join(output_folder, f"{stem}_overlay.png")
+            output_overlay_path = os.path.join(output_folder, f"{stem}_overlay.jpg")
             output_mask_path = os.path.join(output_folder, f"{stem}_mask.png")
 
             postprocessing_mask = self.recognize_from_path(image_path)
@@ -255,10 +260,10 @@ if __name__ == "__main__":
         cv2.imwrite(os.path.join(output_folder, f"{stem}_probs.png"),
                     (recognitor.probs_mask * 255).astype(np.uint8))
         overlay = draw_overlay(recognitor.image, mask)
-        cv2.imwrite(os.path.join(output_folder, f"{stem}_overlay.png"),
+        cv2.imwrite(os.path.join(output_folder, f"{stem}_overlay.jpg"),
                     cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
         cv2.imwrite(os.path.join(output_folder, f"{stem}_mask.png"),
                     (mask * 255).astype(np.uint8))
-        print(f"Saved to {output_folder}/{stem}_{{probs,overlay,mask}}.png")
+        print(f"Saved to {output_folder}/{stem}_probs.png / _overlay.jpg / _mask.png")
     else:
         recognitor.recognize_batch(args.input_folder, args.output_folder)

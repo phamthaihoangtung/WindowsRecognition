@@ -12,7 +12,7 @@ def _to_numpy(x):
     return x.cpu().numpy() if isinstance(x, torch.Tensor) else np.asarray(x)
 
 
-def process_instances_sam3(image, instances, predictor, config):
+def process_instances_sam3(image, instances, predictor, config, image_path=None):
     """
     Refine each SAM3 instance using text + box (first call) then iterative
     point correction (subsequent calls) via the SAM3 video predictor.
@@ -42,7 +42,7 @@ def process_instances_sam3(image, instances, predictor, config):
     img_h, img_w = image.shape[:2]
     refined_mask = np.zeros((img_h, img_w), dtype=np.float32)
 
-    for instance in instances:
+    for inst_idx, instance in enumerate(instances):
         coarse_mask = instance["mask"].astype(np.float32)  # (H, W)
         x1, y1, x2, y2 = instance["box"]
         bw, bh = x2 - x1, y2 - y1
@@ -127,6 +127,29 @@ def process_instances_sam3(image, instances, predictor, config):
 
                 # Normalize to [0, 1] — video predictor default is rel_coordinates=True
                 pts_norm = [[x / crop_w, y / crop_h] for x, y in pts_px]
+
+                # print(
+                #     f"[DEBUG add_prompt/points]"
+                #     f"  src={image_path}"
+                #     f"  crop=({crop_h}h x {crop_w}w)"
+                #     f"  iter={iter_idx}"
+                #     f"  obj_id={obj_id}"
+                #     f"  pts_norm={pts_norm}"
+                #     f"  labels={labels}"
+                # )
+                # # Save crop and current predicted_mask for offline inspection
+                # _debug_dir = "data/debug_triton"
+                # os.makedirs(_debug_dir, exist_ok=True)
+                # _stem = os.path.splitext(os.path.basename(image_path or "unknown"))[0]
+                # _tag = f"{_stem}_inst{inst_idx}_iter{iter_idx}"
+                # cv2.imwrite(
+                #     os.path.join(_debug_dir, f"{_tag}_crop.jpg"),
+                #     cv2.cvtColor(cropped_image, cv2.COLOR_RGB2BGR),
+                # )
+                # cv2.imwrite(
+                #     os.path.join(_debug_dir, f"{_tag}_predicted_mask.png"),
+                #     (predicted_mask * 255).astype(np.uint8),
+                # )
 
                 response = predictor.handle_request({
                     "type": "add_prompt",
