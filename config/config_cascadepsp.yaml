@@ -1,0 +1,14 @@
+hyperparameters:
+  image_size: None
+
+inference:
+  coarse_segmentation_mode: "sam3"
+  sam3_text_prompt: "A window"
+  sam3_score_threshold: 0.8      # Turn 2 exemplar box selection threshold
+  sam3_min_object_score: 0.6     # Minimum instance score to include in Stage 1 output
+  sam3_input_size: 1008
+  refined_segmentation_mode: "cascadepsp"
+  use_tta: false
+  cascadepsp_threshold: 0.5
+  cascadepsp_L: 900
+  cascadepsp_fast: false

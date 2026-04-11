@@ -10,7 +10,6 @@ from tqdm import tqdm
 import glob
 from PIL import Image as PILImage
 from ultralytics import SAM
-from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 from sam3.model_builder import build_sam3_image_model
 from sam3.model.sam3_image_processor import Sam3Processor
@@ -19,6 +18,8 @@ import pytorch_lightning as pl
 from inference.post_processor import post_process_refined_mask
 from inference.tiling_processor import process_image_with_tiling
 from inference.contour_processor import process_contours
+from inference.cascade_processor import process_with_cascadepsp
+from inference.crm_processor import process_with_crm, load_crm_model
 from pathlib import Path
 
 
@@ -49,9 +50,15 @@ class WindowsRecognitor:
             self.sam_model = self._load_ultralytics_sam_model(self.sam_checkpoint, self.device)
         elif self.refined_segmentation_mode == "contour":
             self.sam_model = self._load_hugging_face_sam_model(self.sam_checkpoint)
+        elif self.refined_segmentation_mode == "cascadepsp":
+            self.sam_model = self._load_cascadepsp_model()
+        elif self.refined_segmentation_mode == "crm":
+            self.sam_model = self._load_crm_model()
 
     def _load_sam3_model(self):
-        model = build_sam3_image_model()
+        import sam3.model_builder as _sam3_mb
+        bpe_path = os.path.join(os.path.dirname(_sam3_mb.__file__), "assets", "bpe_simple_vocab_16e6.txt.gz")
+        model = build_sam3_image_model(bpe_path=bpe_path)
         processor = Sam3Processor(model)
         return model, processor
 
@@ -89,10 +96,13 @@ class WindowsRecognitor:
                 )
 
         # Combine N instance masks into a single score-weighted probability map
+        min_object_score = self.config["inference"].get("sam3_min_object_score", 0.6)
         probs = np.zeros((img_h, img_w), dtype=np.float32)
         for mask, score in zip(output["masks"], output["scores"]):
-            mask_np = mask.squeeze().detach().cpu().numpy().astype(bool)
             score_val = float(score)
+            if score_val < min_object_score:
+                continue
+            mask_np = mask.squeeze().detach().cpu().numpy().astype(bool)
             probs = np.where(mask_np, np.maximum(probs, score_val), probs)
 
         return probs
@@ -102,6 +112,14 @@ class WindowsRecognitor:
 
     def _load_hugging_face_sam_model(self, sam_checkpoint):
         return SAM2ImagePredictor.from_pretrained(sam_checkpoint)
+
+    def _load_cascadepsp_model(self):
+        import segmentation_refinement as refine
+        return refine.Refiner(device=str(self.device))
+
+    def _load_crm_model(self):
+        checkpoint = self.config["inference"]["crm_checkpoint"]
+        return load_crm_model(checkpoint, self.device)
 
     def _load_model(self, model_path, model_config, device):
         model = SegmentationModel.load_from_checkpoint(
@@ -162,6 +180,12 @@ class WindowsRecognitor:
             refined_mask = process_image_with_tiling(image, self.probs_mask, self.sam_model, self.config, self.device)
         elif self.refined_segmentation_mode == "contour":
             refined_mask = process_contours(image, self.probs_mask, self.sam_model, self.config)
+        elif self.refined_segmentation_mode == "cascadepsp":
+            refined_mask = process_with_cascadepsp(image, self.probs_mask, self.sam_model, self.config)
+            return refined_mask  # skip post-processing for CascadePSP experiment
+        elif self.refined_segmentation_mode == "crm":
+            refined_mask = process_with_crm(image, self.probs_mask, self.sam_model, self.config["inference"])
+            return refined_mask  # skip post-processing for CRM experiment
 
         postprocessing_mask = post_process_refined_mask(
             refined_mask,
@@ -214,8 +238,8 @@ class WindowsRecognitor:
 if __name__ == "__main__":
     pl.seed_everything(0)
 
-    input_folder = "data/interiors_crawled"
-    output_folder = "data/outputs/interiors_crawled_sam3"
+    input_folder = "data/official_test"
+    output_folder = "data/outputs/official_test_sam3_crm"
 
-    recognitor = WindowsRecognitor("config/config_sam3.yaml")
+    recognitor = WindowsRecognitor("config/config_crm.yaml")
     recognitor.recognize_batch(input_folder, output_folder)

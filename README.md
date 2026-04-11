@@ -16,6 +16,15 @@ bash scripts/install_sam.sh
 
 This initializes the SAM2 submodule and runs `uv sync` to install all dependencies including SAM2.
 
+### CRM (experimental)
+Download the checkpoint (~93MB) from [OneDrive](https://mycuhk-my.sharepoint.com/:u:/g/personal/1155154510_link_cuhk_edu_hk/EWdbUAf33ZlNvB2d1dkBv-QBwSnRA0ong9wFqig54I5Iyw?e=pcjp8y) and place it at `models/crm/model_45705.aspx`.
+
+```bash
+bash scripts/install_crm.sh
+```
+
+This initializes the CRM submodule and runs `uv sync` to install all dependencies.
+
 ### SAM3 (experimental)
 Add `HF_TOKEN=your_token_here` to your `.env` file — the model is gated on HuggingFace.
 
