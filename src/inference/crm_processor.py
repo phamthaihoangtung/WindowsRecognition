@@ -108,6 +108,6 @@ def process_with_crm(image, probs_mask, crm_model, config):
             preds.append(torch.cat(pred_parts, dim=0).view(H, W))  # (H, W)
 
     refined = torch.stack(preds).mean(dim=0).cpu().numpy()
-    # Model output is logits — apply sigmoid to get [0, 1]
+    # Model output is logits — apply sigmoid then threshold to binary 0/1
     refined = 1.0 / (1.0 + np.exp(-refined))
-    return refined.astype(np.float32)
+    return (refined >= 0.5).astype(np.float32)

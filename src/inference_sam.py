@@ -182,10 +182,10 @@ class WindowsRecognitor:
             refined_mask = process_contours(image, self.probs_mask, self.sam_model, self.config)
         elif self.refined_segmentation_mode == "cascadepsp":
             refined_mask = process_with_cascadepsp(image, self.probs_mask, self.sam_model, self.config)
-            return refined_mask  # skip post-processing for CascadePSP experiment
+            return (refined_mask >= 0.5).astype(np.float32)
         elif self.refined_segmentation_mode == "crm":
             refined_mask = process_with_crm(image, self.probs_mask, self.sam_model, self.config["inference"])
-            return refined_mask  # skip post-processing for CRM experiment
+            return (refined_mask >= 0.5).astype(np.float32)
 
         postprocessing_mask = post_process_refined_mask(
             refined_mask,
@@ -218,7 +218,7 @@ class WindowsRecognitor:
         for image_path in tqdm(glob.glob(os.path.join(input_folder, "*.jpg")), desc="Processing images"):
             image_name = os.path.basename(image_path)
             output_probs_path = os.path.join(output_folder, f"{os.path.splitext(image_name)[0]}_probs.png")
-            output_overlay_path = os.path.join(output_folder, f"{os.path.splitext(image_name)[0]}_overlay.png")
+            output_overlay_path = os.path.join(output_folder, f"{os.path.splitext(image_name)[0]}_overlay.jpg")
             output_mask_path = os.path.join(output_folder, f"{os.path.splitext(image_name)[0]}_mask.png")
 
             # Get postprocessed mask
