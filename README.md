@@ -34,6 +34,23 @@ bash scripts/install_samrefiner.sh
 
 This initializes the SAMRefiner submodule and runs `uv sync` to install all dependencies including FastGeodis.
 
+### SegRefiner (experimental)
+Download the HR-SegRefiner checkpoint from [Google Drive](https://drive.google.com/file/d/143kerk4WOerGZMqR-cAETb7rOcoQ0CQ_/view) and place it at `models/segrefiner/segrefiner_hr_latest.pth`.
+
+SegRefiner requires mmcv 2.x, which compiles CUDA ops from source. Install the CUDA dev headers first:
+
+```bash
+sudo apt-get install -y libcusparse-dev-12-6 libcublas-dev-12-6 libcurand-dev-12-6 libcufft-dev-12-6 libcusolver-dev-12-6
+```
+
+Then run:
+
+```bash
+bash scripts/install/install_segrefiner.sh
+```
+
+This initializes the SegRefiner submodule, builds mmcv 2.x with CUDA ops, and installs the SegRefiner (mmdet 2.28) package.
+
 ### SAM3 (experimental)
 Add `HF_TOKEN=your_token_here` to your `.env` file — the model is gated on HuggingFace.
 

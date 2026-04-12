@@ -1,0 +1,25 @@
+hyperparameters:
+  image_size: None
+
+inference:
+  # Stage 1: SAM3 coarse segmentation
+  coarse_segmentation_mode: "sam3"
+  sam3_text_prompt: "A window"
+  sam3_score_threshold: 0.8       # Min score to use a detection as a Turn-2 exemplar box
+  sam3_min_object_score: 0.6      # Min instance score to include in the Stage 1 probability map
+  sam3_fp16: true                 # Run SAM3 activations in fp16 via autocast (CUDA only)
+  sam3_input_size: 1008           # Resize smallest dim to this before SAM3 (null = original size)
+
+  # Stage 2: SegRefiner refinement
+  refined_segmentation_mode: "segrefiner"
+  use_tta: false
+  stage2_input_size: null         # Resize smallest dim before Stage 2 (null = use Stage 1 output size)
+
+  # SegRefiner model
+  segrefiner_config: "segrefiner/configs/segrefiner/segrefiner_hr.py"
+  segrefiner_checkpoint: "models/segrefiner/segrefiner_hr_latest.pth"
+
+  # Refinement parameters
+  segrefiner_threshold: 0.5       # Binarise the coarse probability mask before passing to SegRefiner
+
+  dilation_kernel_size: 0
