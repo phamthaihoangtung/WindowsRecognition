@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 
 
-def post_process_refined_mask(refined_mask, area_threshold_ratio=0.001, epsilon=0.01, convex_hull_iou_threshold=0.95, prob_thresh=0.5, use_otsu=False):
+def post_process_refined_mask(refined_mask, area_threshold_ratio=0.001, epsilon=0.01, convex_hull_iou_threshold=0.95, prob_thresh=0.5, use_otsu=False, dilation_kernel_size=0):
     """
     Post-process the refined mask by filtering contours based on area and simplifying them.
 
@@ -15,7 +15,10 @@ def post_process_refined_mask(refined_mask, area_threshold_ratio=0.001, epsilon=
         prob_thresh (float): Fixed threshold for binarising the refined mask. Default 0.5.
             Ignored when use_otsu=True.
         use_otsu (bool): If True, use Otsu's method instead of prob_thresh. Suitable for
-            bimodal probability masks; not recommended for binary SAM3 outputs.
+            bimodal probability masks.
+        dilation_kernel_size (int): If > 0, apply per-contour morphological dilation with an
+            ellipse kernel of this size before Douglas-Peucker simplification only. Compensates
+            for DPP's inward-cutting bias. Convex hull path is unaffected.
     Returns:
         np.ndarray: Post-processed binary mask.
     """
@@ -33,6 +36,10 @@ def post_process_refined_mask(refined_mask, area_threshold_ratio=0.001, epsilon=
 
     # Create a blank mask for the post-processed result
     post_processed_mask = np.zeros_like(binary_mask)
+
+    dilation_kernel = None
+    if dilation_kernel_size > 0:
+        dilation_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (dilation_kernel_size, dilation_kernel_size))
 
     for contour in contours:
         # Filter contours by area
@@ -53,8 +60,16 @@ def post_process_refined_mask(refined_mask, area_threshold_ratio=0.001, epsilon=
             if iou > convex_hull_iou_threshold:
                 cv2.drawContours(post_processed_mask, [convex_hull], -1, 1, thickness=cv2.FILLED)
             else:
-                # Simplify the contour
-                approx_contour = cv2.approxPolyDP(contour, epsilon * cv2.arcLength(contour, True), True)
+                # Optionally dilate this contour before DPP to compensate for inward-cutting bias
+                if dilation_kernel is not None:
+                    local_mask = np.zeros_like(binary_mask)
+                    cv2.drawContours(local_mask, [contour], -1, 255, thickness=cv2.FILLED)
+                    local_mask = cv2.dilate(local_mask, dilation_kernel)
+                    dilated_contours, _ = cv2.findContours(local_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                    contour_for_dpd = dilated_contours[0] if dilated_contours else contour
+                else:
+                    contour_for_dpd = contour
+                approx_contour = cv2.approxPolyDP(contour_for_dpd, epsilon * cv2.arcLength(contour_for_dpd, True), True)
                 cv2.drawContours(post_processed_mask, [approx_contour], -1, 1, thickness=cv2.FILLED)
 
     return post_processed_mask

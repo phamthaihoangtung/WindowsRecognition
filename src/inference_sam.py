@@ -218,14 +218,17 @@ class WindowsRecognitor:
         if stage2_size is not None:
             refined_mask = cv2.resize(refined_mask.astype(np.float32), (orig_w, orig_h))
 
-        if self.refined_segmentation_mode in ("cascadepsp", "crm", "samrefiner"):
+        if self.refined_segmentation_mode in ("crm", "samrefiner"):
             return (refined_mask >= 0.5).astype(np.float32)
 
+        inf = self.config["inference"]
         postprocessing_mask = post_process_refined_mask(
             refined_mask,
             area_threshold_ratio=0.001,
-            epsilon=0.003,
-            convex_hull_iou_threshold=0.95,
+            epsilon=0.001,
+            convex_hull_iou_threshold=0.99,
+            use_otsu=self.refined_segmentation_mode == "cascadepsp",
+            dilation_kernel_size=inf.get("dilation_kernel_size", 0),
         )
         return postprocessing_mask
     

@@ -8,8 +8,10 @@ inference:
   sam3_min_object_score: 0.6     # Minimum instance score to include in Stage 1 output
   sam3_input_size: 1008
   refined_segmentation_mode: "cascadepsp"
-  use_tta: false
-  stage2_input_size: 2048  # resize smallest dim before stage 2; null = use original size
+  use_tta: true
+  stage2_input_size: 1008  # resize smallest dim before stage 2; null = use original size
   cascadepsp_threshold: 0.5
   cascadepsp_L: 900
-  cascadepsp_fast: false
+  cascadepsp_fast: true
+  cascadepsp_fp16: true
+  dilation_kernel_size: 3  # 0 = disabled; e.g. 5 applies a 5×5 ellipse dilation before polygon simplification

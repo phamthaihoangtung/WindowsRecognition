@@ -61,10 +61,10 @@ The system is a two-stage window segmentation pipeline:
 - Mode is set via `config.inference.refined_segmentation_mode`:
   - `"contour"` (default): finds contours in the coarse mask → crops each window region → iteratively prompts SAM2 (`SAM2ImagePredictor`) with positive/negative points → averages multiple sampling runs.
   - `"tiling"`: uses Ultralytics SAM with a tiling approach.
-  - `"cascadepsp"`: global + local boundary refinement via CascadePSP. Keys: `cascadepsp_threshold`, `cascadepsp_L`, `cascadepsp_fast`. See `src/inference/cascade_processor.py`.
+  - `"cascadepsp"`: global + local boundary refinement via CascadePSP. Keys: `cascadepsp_threshold`, `cascadepsp_L`, `cascadepsp_fast`, `cascadepsp_fp16` (CUDA-only autocast). See `src/inference/cascade_processor.py`.
   - `"crm"`: multi-scale LIIF-based refinement via CRMNet. Keys: `crm_threshold`, `crm_scales`, `crm_checkpoint`. See `src/inference/crm_processor.py`.
   - `"samrefiner"`: iterative SAM-HQ refinement using geodesic point sampling and mask prompts. Keys: `samrefiner_checkpoint`, `samrefiner_model_type`, `samrefiner_iters`, `samrefiner_gamma`, `samrefiner_strength`, `samrefiner_margin`, `samrefiner_threshold`, `samrefiner_use_point/box/mask/add_neg`. See `src/inference/samrefiner_processor.py`.
-- Post-processing (`src/inference/post_processor.py`): removes small regions, applies polygon simplification, convex hull approximation.
+- Post-processing (`src/inference/post_processor.py`): removes small regions, applies polygon simplification, convex hull approximation. `cascadepsp` uses Otsu binarization; `crm` and `samrefiner` bypass with a hard `>= 0.5` threshold. `dilation_kernel_size` (general config key) dilates per-contour before Douglas-Peucker only, compensating for its inward-cutting bias.
 
 **Inference server** (`src/server.py`):
 - Flask app on port 5001 with a single `POST /upload-image` endpoint.
