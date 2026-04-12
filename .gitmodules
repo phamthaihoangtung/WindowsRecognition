@@ -1,3 +1,12 @@
 [submodule "sam2"]
 	path = sam2
 	url = https://github.com/facebookresearch/sam2.git
+[submodule "sam3"]
+	path = sam3
+	url = https://github.com/facebookresearch/sam3.git
+[submodule "crm"]
+	path = crm
+	url = https://github.com/qqlu/Entity.git
+[submodule "samrefiner"]
+	path = samrefiner
+	url = https://github.com/linyq2117/SAMRefiner.git

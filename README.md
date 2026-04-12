@@ -11,14 +11,37 @@ pip install uv
 Then, follow the steps to configure and activate the environment:
 
 ```bash
-uv sync
-```
-
-### SAM2
-```bash
-git submodule update --init --recursive
 bash scripts/install_sam.sh
 ```
+
+This initializes the SAM2 submodule and runs `uv sync` to install all dependencies including SAM2.
+
+### CRM (experimental)
+Download the checkpoint (~93MB) from [OneDrive](https://mycuhk-my.sharepoint.com/:u:/g/personal/1155154510_link_cuhk_edu_hk/EWdbUAf33ZlNvB2d1dkBv-QBwSnRA0ong9wFqig54I5Iyw?e=pcjp8y) and place it at `models/crm/model_45705.aspx`.
+
+```bash
+bash scripts/install_crm.sh
+```
+
+This initializes the CRM submodule and runs `uv sync` to install all dependencies.
+
+### SAMRefiner (experimental)
+Download the SAM-HQ ViT-H checkpoint (~2.6GB) from [HuggingFace](https://huggingface.co/lkeab/hq-sam/resolve/main/sam_hq_vit_h.pth) and place it at `models/samrefiner/sam_hq_vit_h.pth`.
+
+```bash
+bash scripts/install_samrefiner.sh
+```
+
+This initializes the SAMRefiner submodule and runs `uv sync` to install all dependencies including FastGeodis.
+
+### SAM3 (experimental)
+Add `HF_TOKEN=your_token_here` to your `.env` file — the model is gated on HuggingFace.
+
+```bash
+bash scripts/install_sam3.sh
+```
+
+This initializes the SAM3 submodule, authenticates with HuggingFace, and runs `uv sync` to install all dependencies including SAM3.
 
 ## Configuration
 

@@ -2,29 +2,31 @@ import cv2
 import numpy as np
 
 
-def post_process_refined_mask(refined_mask, area_threshold_ratio=0.001, epsilon=0.01, convex_hull_iou_threshold=0.95):
+def post_process_refined_mask(refined_mask, area_threshold_ratio=0.001, epsilon=0.01, convex_hull_iou_threshold=0.95, prob_thresh=0.5, use_otsu=False):
     """
     Post-process the refined mask by filtering contours based on area and simplifying them.
 
     Args:
-        refined_mask (np.ndarray): Refined binary mask.
-        area_threshold_ratio (float): Minimum area ratio for contours to be retained.o be retained.
-        epsilon (float): Approximation accuracy for contour simplification.
-        prob_thresh (float): Probability threshold for binary conversion.
+        refined_mask (np.ndarray): Refined binary mask (float32, values in [0, 1]).
+        area_threshold_ratio (float): Minimum area ratio for contours to be retained.
+        epsilon (float): Approximation accuracy for Douglas-Peucker contour simplification,
+            as a fraction of the contour arc length. Higher → fewer vertices, coarser polygon;
+            lower → more vertices, closer to original boundary.
+        prob_thresh (float): Fixed threshold for binarising the refined mask. Default 0.5.
+            Ignored when use_otsu=True.
+        use_otsu (bool): If True, use Otsu's method instead of prob_thresh. Suitable for
+            bimodal probability masks; not recommended for binary SAM3 outputs.
     Returns:
         np.ndarray: Post-processed binary mask.
-    """ 
+    """
 
-    # Smooth the mask using Gaussian blur
-    # smoothed_mask = cv2.GaussianBlur(refined_mask, (5, 5), 0)
     image_area = refined_mask.shape[0] * refined_mask.shape[1]
-    # Convert mask to binaryrea * area_threshold_ratio
-    # binary_mask = (refined_mask > prob_thresh).astype(np.uint8)
-    # Convert mask to binary
-
-    gray_mask = (refined_mask * 255).astype(np.uint8)
-    gray_mask = cv2.GaussianBlur(gray_mask,(7,7),0)
-    _, binary_mask = cv2.threshold(gray_mask, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    if use_otsu:
+        gray_mask = (refined_mask * 255).astype(np.uint8)
+        gray_mask = cv2.GaussianBlur(gray_mask, (7, 7), 0)
+        _, binary_mask = cv2.threshold(gray_mask, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    else:
+        binary_mask = (refined_mask > prob_thresh).astype(np.uint8) * 255
 
     # Find contours
     contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)

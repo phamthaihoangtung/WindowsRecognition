@@ -1,0 +1,15 @@
+hyperparameters:
+  image_size: None
+
+inference:
+  coarse_segmentation_mode: "sam3"
+  sam3_text_prompt: "A window"
+  sam3_score_threshold: 0.8      # Turn 2 exemplar box selection threshold
+  sam3_min_object_score: 0.6     # Minimum instance score to include in Stage 1 output
+  sam3_input_size: 1008
+  refined_segmentation_mode: "crm"
+  use_tta: false
+  stage2_input_size: 2048  # resize smallest dim before stage 2; null = use original size
+  crm_checkpoint: "models/crm/model_45705.aspx"
+  crm_threshold: 0.5
+  crm_scales: [0.25, 0.5, 1.0]
