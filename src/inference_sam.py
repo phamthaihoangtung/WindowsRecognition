@@ -87,23 +87,27 @@ class WindowsRecognitor:
         text_prompt = self.config["inference"].get("sam3_text_prompt", "A window")
         score_threshold = self.config["inference"].get("sam3_score_threshold", 0.8)
 
-        state = self.sam3_processor.set_image(pil_image)
+        fp16 = self.config["inference"].get("sam3_fp16", False)
+        use_autocast = fp16 and torch.cuda.is_available()
 
-        # Turn 1: text prompt only
-        output = self.sam3_processor.set_text_prompt(state=state, prompt=text_prompt)
+        with torch.autocast("cuda", dtype=torch.float16, enabled=use_autocast):
+            state = self.sam3_processor.set_image(pil_image)
 
-        # Turn 2: add high-confidence detections as exemplar prompts; skip if none found
-        high_conf = [(s, b) for s, b in zip(output["scores"], output["boxes"]) if s > score_threshold]
-        if high_conf:
-            self.sam3_processor.reset_all_prompts(state)
-            self.sam3_processor.set_text_prompt(state=state, prompt=text_prompt)
-            for _, box in high_conf:
-                x1, y1, x2, y2 = box.tolist()
-                cx, cy = (x1 + x2) / 2 / img_w, (y1 + y2) / 2 / img_h
-                w, h = (x2 - x1) / img_w, (y2 - y1) / img_h
-                output = self.sam3_processor.add_geometric_prompt(
-                    box=[cx, cy, w, h], label=True, state=state
-                )
+            # Turn 1: text prompt only
+            output = self.sam3_processor.set_text_prompt(state=state, prompt=text_prompt)
+
+            # Turn 2: add high-confidence detections as exemplar prompts; skip if none found
+            high_conf = [(s, b) for s, b in zip(output["scores"], output["boxes"]) if s > score_threshold]
+            if high_conf:
+                self.sam3_processor.reset_all_prompts(state)
+                self.sam3_processor.set_text_prompt(state=state, prompt=text_prompt)
+                for _, box in high_conf:
+                    x1, y1, x2, y2 = box.tolist()
+                    cx, cy = (x1 + x2) / 2 / img_w, (y1 + y2) / 2 / img_h
+                    w, h = (x2 - x1) / img_w, (y2 - y1) / img_h
+                    output = self.sam3_processor.add_geometric_prompt(
+                        box=[cx, cy, w, h], label=True, state=state
+                    )
 
         # Combine N instance masks into a single score-weighted probability map
         min_object_score = self.config["inference"].get("sam3_min_object_score", 0.6)

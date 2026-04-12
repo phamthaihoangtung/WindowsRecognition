@@ -1,4 +1,4 @@
 uv run python src/inference_sam.py \
   --config config/config_samrefiner.yaml \
-  --input data/interiors_crawled \
-  --output data/outputs/interiors_crawled_sam3_samrefiner
+  --input data/official_test \
+  --output data/outputs/official_test_sam3_samrefiner

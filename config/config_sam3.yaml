@@ -4,6 +4,7 @@ hyperparameters:
 inference:
   sam3_text_prompt: "A window"
   sam3_score_threshold: 0.8
+  sam3_fp16: false           # run SAM3 activations in fp16 via autocast (CUDA only)
   sam3_input_size: 1008  # resize smallest dim to this before Stage 1 to cap N×H×W memory
   sam_consecutive_iterations: 10
   num_points: 1000

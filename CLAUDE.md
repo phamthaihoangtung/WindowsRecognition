@@ -56,7 +56,7 @@ The system is a two-stage window segmentation pipeline:
 
 **Stage 1 — Coarse segmentation** (set via `config.inference.coarse_segmentation_mode`):
 - `"efficientnet"` (default): PyTorch Lightning `SegmentationModel` wrapping `segmentation_models_pytorch` (Unet or FPN). Config in `config/config.yaml`; checkpoints saved to `models/<experiment_name>/`. See `src/model.py`, `src/train.py`.
-- `"sam3"`: Open-vocabulary detection using SAM3 with a text prompt (`sam3_text_prompt`). Produces a probability map from scored instance detections.
+- `"sam3"`: Open-vocabulary detection using SAM3 with a text prompt (`sam3_text_prompt`). Produces a probability map from scored instance detections. `sam3_fp16` (bool, default false) runs activations under `torch.autocast` fp16 (CUDA only). Note: model weight quantization (`.half()`) is incompatible with SAM3 — autocast preserves some ops in fp32 (LayerNorm, softmax) which then mismatches fp16 weights.
 
 **Stage 2 — Refinement** (`src/inference_sam.py`, `src/inference/`):
 - `WindowsRecognitor` runs Stage 1, then passes the coarse mask to the configured Stage 2 refiner.
