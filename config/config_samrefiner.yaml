@@ -15,19 +15,30 @@ inference:
   use_tta: true
   stage2_input_size: null         # Resize smallest dim before Stage 2 (null = use Stage 1 output size)
 
-  # SAM-HQ model
-  samrefiner_checkpoint: "models/samrefiner/sam_hq_vit_h.pth"
-  samrefiner_model_type: "vit_h"  # One of: vit_h, vit_l, vit_b, vit_tiny
+  # # SAM-HQ model
+  # samrefiner_checkpoint: "models/samrefiner/sam_hq_vit_h.pth"
+  # samrefiner_model_type: "vit_h"  # One of: vit_h, vit_l, vit_b, vit_tiny
 
   # Refinement parameters
-  samrefiner_threshold: 0.2       # Binarise the coarse probability mask before passing to SAMRefiner
+  samrefiner_threshold: 0.5       # Binarise the coarse probability mask before passing to SAMRefiner
   samrefiner_iters: 5             # Number of iterative refinement rounds
   samrefiner_gamma: 4.0           # Geodesic distance gamma for point sampling (higher = focus on boundary)
   samrefiner_strength: 30         # Gaussian weighting strength for mask prompt
-  samrefiner_margin: 0.05          # Fractional margin to expand bounding boxes (0 = tight)
+  samrefiner_margin: 0.0          # Fractional margin to expand bounding boxes (0 = tight)
 
   # Prompt types to use (all enabled = best quality, disable to trade accuracy for speed)
   samrefiner_use_point: true      # Use geodesic-sampled foreground/background point prompts
   samrefiner_use_box: true        # Use expanded bounding box prompts
   samrefiner_use_mask: true       # Use previous-iteration mask as a prompt
   samrefiner_add_neg: true        # Include negative (background) point prompts
+
+  # SAMRefiner backend: "sam_hq" (SAM v1 + HQ decoder) or "sam2_hq" (SAM2 + HQ decoder)
+  samrefiner_backend: "sam2_hq"
+
+  # SAM2-HQ model (used when samrefiner_backend: "sam2_hq")
+  samrefiner_sam2hq_checkpoint: "models/samrefiner/sam2.1_hq_hiera_l.pt"
+  samrefiner_sam2hq_config: "sam2.1/sam2.1_hq_hiera_l.yaml"   # relative to sam2hq configs/
+
+  # Post-processing (applied after SAMRefiner refinement)
+  dilation_kernel_size: 3         # Per-contour ellipse dilation before Douglas-Peucker (0 = disabled)
+  postprocess_epsilon: 0.002      # Douglas-Peucker tolerance as fraction of arc length (default 0.001)

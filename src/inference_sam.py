@@ -20,7 +20,7 @@ from inference.tiling_processor import process_image_with_tiling
 from inference.contour_processor import process_contours
 from inference.cascade_processor import process_with_cascadepsp
 from inference.crm_processor import process_with_crm, load_crm_model
-from inference.samrefiner_processor import process_with_samrefiner, load_samrefiner_model
+from inference.samrefiner_processor import process_with_samrefiner, load_samrefiner_model, load_sam2hq_model
 from pathlib import Path
 
 
@@ -139,6 +139,11 @@ class WindowsRecognitor:
         return load_crm_model(checkpoint, self.device)
 
     def _load_samrefiner_model(self):
+        backend = self.config["inference"].get("samrefiner_backend", "sam_hq")
+        if backend == "sam2_hq":
+            checkpoint = self.config["inference"]["samrefiner_sam2hq_checkpoint"]
+            config_file = self.config["inference"]["samrefiner_sam2hq_config"]
+            return load_sam2hq_model(checkpoint, config_file, self.device)
         checkpoint = self.config["inference"]["samrefiner_checkpoint"]
         model_type = self.config["inference"].get("samrefiner_model_type", "vit_h")
         return load_samrefiner_model(checkpoint, model_type, self.device)
@@ -222,14 +227,14 @@ class WindowsRecognitor:
         if stage2_size is not None:
             refined_mask = cv2.resize(refined_mask.astype(np.float32), (orig_w, orig_h))
 
-        if self.refined_segmentation_mode in ("crm", "samrefiner"):
+        if self.refined_segmentation_mode == "crm":
             return (refined_mask >= 0.5).astype(np.float32)
 
         inf = self.config["inference"]
         postprocessing_mask = post_process_refined_mask(
             refined_mask,
             area_threshold_ratio=0.001,
-            epsilon=0.001,
+            epsilon=inf.get("postprocess_epsilon", 0.001),
             convex_hull_iou_threshold=0.99,
             use_otsu=self.refined_segmentation_mode == "cascadepsp",
             dilation_kernel_size=inf.get("dilation_kernel_size", 0),
