@@ -18,6 +18,14 @@ Add a `.env` file with your Weights & Biases API key:
 WANDB_API_KEY=your_wandb_api_key_here
 ```
 
+Optional external refiners (install only what you need):
+```bash
+bash scripts/install_sam3.sh       # SAM3 coarse segmentation
+bash scripts/install_cascadepsp.sh # CascadePSP stage-2 refiner
+bash scripts/install_crm.sh        # CRM stage-2 refiner
+bash scripts/install_samrefiner.sh # SAMRefiner (SAM-HQ) stage-2 refiner
+```
+
 ## Commands
 
 ```bash
@@ -27,29 +35,35 @@ uv run python src/train.py
 # Run inference server (Flask, port 5001)
 uv run python src/server.py
 
-# Batch inference with SAM
-uv run python src/inference_sam.py
+# Batch inference — pick the right script for the mode you want:
+uv run python src/inference_sam.py   # general entry point
 ```
 
-Scripts mirror the above:
+Scripts:
 - `scripts/train.sh` — training
-- `scripts/infer_sam.sh` — batch SAM inference
 - `scripts/infer.sh` — standard inference
+- `scripts/infer_sam.sh` — SAM2 contour/tiling refinement
+- `scripts/infer_sam3.sh` — SAM3 coarse + SAM2 refinement
+- `scripts/infer_cascadepsp.sh` — SAM3 coarse + CascadePSP refinement
+- `scripts/infer_crm.sh` — SAM3 coarse + CRM refinement
+- `scripts/infer_samrefiner.sh` — SAM3 coarse + SAMRefiner (SAM-HQ) refinement
 
 ## Architecture
 
 The system is a two-stage window segmentation pipeline:
 
-**Stage 1 — Coarse segmentation** (`src/model.py`, `src/train.py`):
-- PyTorch Lightning `SegmentationModel` wrapping `segmentation_models_pytorch` (Unet or FPN with configurable EfficientNet backbone).
-- Trained with a combined loss (see `src/loss.py`), evaluated by IoU.
-- Config is loaded from `config/config.yaml`; model checkpoints saved to `models/<experiment_name>/`.
+**Stage 1 — Coarse segmentation** (set via `config.inference.coarse_segmentation_mode`):
+- `"efficientnet"` (default): PyTorch Lightning `SegmentationModel` wrapping `segmentation_models_pytorch` (Unet or FPN). Config in `config/config.yaml`; checkpoints saved to `models/<experiment_name>/`. See `src/model.py`, `src/train.py`.
+- `"sam3"`: Open-vocabulary detection using SAM3 with a text prompt (`sam3_text_prompt`). Produces a probability map from scored instance detections.
 
-**Stage 2 — SAM2 refinement** (`src/inference_sam.py`, `src/inference/`):
-- `WindowsRecognitor` runs the segmentation model, then refines each detected window region with SAM2.
-- Two refinement modes (set via `config.inference.refined_segmentation_mode`):
+**Stage 2 — Refinement** (`src/inference_sam.py`, `src/inference/`):
+- `WindowsRecognitor` runs Stage 1, then passes the coarse mask to the configured Stage 2 refiner.
+- Mode is set via `config.inference.refined_segmentation_mode`:
   - `"contour"` (default): finds contours in the coarse mask → crops each window region → iteratively prompts SAM2 (`SAM2ImagePredictor`) with positive/negative points → averages multiple sampling runs.
   - `"tiling"`: uses Ultralytics SAM with a tiling approach.
+  - `"cascadepsp"`: global + local boundary refinement via CascadePSP. Keys: `cascadepsp_threshold`, `cascadepsp_L`, `cascadepsp_fast`. See `src/inference/cascade_processor.py`.
+  - `"crm"`: multi-scale LIIF-based refinement via CRMNet. Keys: `crm_threshold`, `crm_scales`, `crm_checkpoint`. See `src/inference/crm_processor.py`.
+  - `"samrefiner"`: iterative SAM-HQ refinement using geodesic point sampling and mask prompts. Keys: `samrefiner_checkpoint`, `samrefiner_model_type`, `samrefiner_iters`, `samrefiner_gamma`, `samrefiner_strength`, `samrefiner_margin`, `samrefiner_threshold`, `samrefiner_use_point/box/mask/add_neg`. See `src/inference/samrefiner_processor.py`.
 - Post-processing (`src/inference/post_processor.py`): removes small regions, applies polygon simplification, convex hull approximation.
 
 **Inference server** (`src/server.py`):
@@ -61,11 +75,20 @@ The system is a two-stage window segmentation pipeline:
 ## Configuration
 
 All configs live in `config/`. Key fields:
-- `config.yaml` — base training config
-- `config_prod.yaml` — production inference (used by `server.py`)
-- `config_sam.yaml` / `config_large.yaml` — experiment variants
 
-`inference.refined_segmentation_mode` controls which SAM refinement path is used. `inference.sam_checkpoint` sets the HuggingFace model ID (default `facebook/sam2.1-hiera-large`).
+| File | Purpose |
+|---|---|
+| `config.yaml` | Base training config |
+| `config_prod.yaml` | Production inference (used by `server.py`) |
+| `config_sam.yaml` / `config_large.yaml` | SAM2 experiment variants |
+| `config_sam3.yaml` | SAM3 coarse + SAM2 contour refinement |
+| `config_cascadepsp.yaml` | SAM3 coarse + CascadePSP refinement |
+| `config_crm.yaml` | SAM3 coarse + CRM refinement |
+| `config_samrefiner.yaml` | SAM3 coarse + SAMRefiner (SAM-HQ) refinement |
+
+`inference.coarse_segmentation_mode` selects Stage 1 (`"efficientnet"` or `"sam3"`).
+`inference.refined_segmentation_mode` selects Stage 2 (`"contour"`, `"tiling"`, `"cascadepsp"`, `"crm"`, or `"samrefiner"`).
+`inference.stage2_input_size` resizes the smallest dimension before Stage 2 (`null` = keep Stage 1 output size).
 
 ## Data layout
 
