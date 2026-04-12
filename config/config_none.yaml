@@ -1,0 +1,12 @@
+hyperparameters:
+  image_size: None
+
+inference:
+  coarse_segmentation_mode: "sam3"
+  refined_segmentation_mode: "none"
+
+  sam3_text_prompt: "A window"
+  sam3_score_threshold: 0.8
+  sam3_fp16: false
+  sam3_input_size: 1008
+  min_instance_area_ratio: 0.001

@@ -10,3 +10,6 @@
 [submodule "samrefiner"]
 	path = samrefiner
 	url = https://github.com/linyq2117/SAMRefiner.git
+[submodule "segrefiner"]
+	path = segrefiner
+	url = https://github.com/phamthaihoangtung/SegRefiner

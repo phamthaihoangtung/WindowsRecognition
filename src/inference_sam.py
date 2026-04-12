@@ -21,6 +21,7 @@ from inference.contour_processor import process_contours
 from inference.cascade_processor import process_with_cascadepsp
 from inference.crm_processor import process_with_crm, load_crm_model
 from inference.samrefiner_processor import process_with_samrefiner, load_samrefiner_model
+from inference.segrefiner_processor import process_with_segrefiner, load_segrefiner_model
 from pathlib import Path
 
 
@@ -57,6 +58,10 @@ class WindowsRecognitor:
             self.sam_model = self._load_crm_model()
         elif self.refined_segmentation_mode == "samrefiner":
             self.sam_model = self._load_samrefiner_model()
+        elif self.refined_segmentation_mode == "segrefiner":
+            self.sam_model = self._load_segrefiner_model()
+        elif self.refined_segmentation_mode == "none":
+            pass  # no stage 2 model needed
 
     def _load_sam3_model(self):
         import sam3.model_builder as _sam3_mb
@@ -143,6 +148,11 @@ class WindowsRecognitor:
         model_type = self.config["inference"].get("samrefiner_model_type", "vit_h")
         return load_samrefiner_model(checkpoint, model_type, self.device)
 
+    def _load_segrefiner_model(self):
+        config_path = self.config["inference"]["segrefiner_config"]
+        checkpoint = self.config["inference"]["segrefiner_checkpoint"]
+        return load_segrefiner_model(config_path, checkpoint, self.device)
+
     def _load_model(self, model_path, model_config, device):
         model = SegmentationModel.load_from_checkpoint(
             model_path, map_location=device, model_config=model_config,
@@ -218,11 +228,15 @@ class WindowsRecognitor:
             refined_mask = process_with_crm(stage2_image, stage2_probs, self.sam_model, self.config["inference"])
         elif self.refined_segmentation_mode == "samrefiner":
             refined_mask = process_with_samrefiner(stage2_image, stage2_probs, self.sam_model, self.config["inference"])
+        elif self.refined_segmentation_mode == "segrefiner":
+            refined_mask = process_with_segrefiner(stage2_image, stage2_probs, self.sam_model, self.config["inference"])
+        elif self.refined_segmentation_mode == "none":
+            refined_mask = stage2_probs
 
         if stage2_size is not None:
             refined_mask = cv2.resize(refined_mask.astype(np.float32), (orig_w, orig_h))
 
-        if self.refined_segmentation_mode in ("crm", "samrefiner"):
+        if self.refined_segmentation_mode in ("crm", "samrefiner", "segrefiner"):
             return (refined_mask >= 0.5).astype(np.float32)
 
         inf = self.config["inference"]

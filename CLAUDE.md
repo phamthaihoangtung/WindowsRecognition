@@ -24,6 +24,7 @@ bash scripts/install/install_sam3.sh       # SAM3 coarse segmentation
 bash scripts/install/install_cascadepsp.sh # CascadePSP stage-2 refiner
 bash scripts/install/install_crm.sh        # CRM stage-2 refiner
 bash scripts/install/install_samrefiner.sh # SAMRefiner (SAM-HQ) stage-2 refiner
+bash scripts/install/install_segrefiner.sh # SegRefiner (diffusion-based) stage-2 refiner
 ```
 
 ## Commands
@@ -47,6 +48,8 @@ Scripts:
 - `scripts/infer/infer_cascadepsp.sh` — SAM3 coarse + CascadePSP refinement
 - `scripts/infer/infer_crm.sh` — SAM3 coarse + CRM refinement
 - `scripts/infer/infer_samrefiner.sh` — SAM3 coarse + SAMRefiner (SAM-HQ) refinement
+- `scripts/infer/infer_segrefiner.sh` — SAM3 coarse + SegRefiner (diffusion) refinement
+- `scripts/infer/infer_none.sh` — SAM3 coarse + direct post-processing (no Stage 2)
 
 Data utilities: `scripts/data/` — crawl_interiors, move_matching_masks, run_copy_image_mask_pairs
 
@@ -66,7 +69,9 @@ The system is a two-stage window segmentation pipeline:
   - `"cascadepsp"`: global + local boundary refinement via CascadePSP. Keys: `cascadepsp_threshold`, `cascadepsp_L`, `cascadepsp_fast`, `cascadepsp_fp16` (CUDA-only autocast). See `src/inference/cascade_processor.py`.
   - `"crm"`: multi-scale LIIF-based refinement via CRMNet. Keys: `crm_threshold`, `crm_scales`, `crm_checkpoint`. See `src/inference/crm_processor.py`.
   - `"samrefiner"`: iterative SAM-HQ refinement using geodesic point sampling and mask prompts. Keys: `samrefiner_checkpoint`, `samrefiner_model_type`, `samrefiner_iters`, `samrefiner_gamma`, `samrefiner_strength`, `samrefiner_margin`, `samrefiner_threshold`, `samrefiner_use_point/box/mask/add_neg`. See `src/inference/samrefiner_processor.py`.
-- Post-processing (`src/inference/post_processor.py`): removes small regions, applies polygon simplification, convex hull approximation. `cascadepsp` uses Otsu binarization; `crm` and `samrefiner` bypass with a hard `>= 0.5` threshold. `dilation_kernel_size` (general config key) dilates per-contour before Douglas-Peucker only, compensating for its inward-cutting bias.
+  - `"segrefiner"`: discrete diffusion-based refinement via SegRefiner (DenoiseUNet, semantic mode). Keys: `segrefiner_config`, `segrefiner_checkpoint`, `segrefiner_threshold`. See `src/inference/segrefiner_processor.py`.
+  - `"none"`: skip Stage 2 entirely; coarse mask is passed directly to post-processing.
+- Post-processing (`src/inference/post_processor.py`): removes small regions, applies polygon simplification, convex hull approximation. `cascadepsp` uses Otsu binarization; `crm`, `samrefiner`, and `segrefiner` bypass with a hard `>= 0.5` threshold. `dilation_kernel_size` (general config key) dilates per-contour before Douglas-Peucker only, compensating for its inward-cutting bias.
 
 **Inference server** (`src/server.py`):
 - Flask app on port 5001 with a single `POST /upload-image` endpoint.
@@ -87,9 +92,11 @@ All configs live in `config/`. Key fields:
 | `config_cascadepsp.yaml` | SAM3 coarse + CascadePSP refinement |
 | `config_crm.yaml` | SAM3 coarse + CRM refinement |
 | `config_samrefiner.yaml` | SAM3 coarse + SAMRefiner (SAM-HQ) refinement |
+| `config_segrefiner.yaml` | SAM3 coarse + SegRefiner (diffusion) refinement |
+| `config_none.yaml` | SAM3 coarse + direct post-processing (no Stage 2) |
 
 `inference.coarse_segmentation_mode` selects Stage 1 (`"efficientnet"` or `"sam3"`).
-`inference.refined_segmentation_mode` selects Stage 2 (`"contour"`, `"tiling"`, `"cascadepsp"`, `"crm"`, or `"samrefiner"`).
+`inference.refined_segmentation_mode` selects Stage 2 (`"contour"`, `"tiling"`, `"cascadepsp"`, `"crm"`, `"samrefiner"`, `"segrefiner"`, or `"none"` to skip Stage 2).
 `inference.stage2_input_size` resizes the smallest dimension before Stage 2 (`null` = keep Stage 1 output size).
 
 ## Data layout
