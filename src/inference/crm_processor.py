@@ -70,16 +70,24 @@ def process_with_crm(image, probs_mask, crm_model, config):
     seg_t = torch.from_numpy(binary_mask).unsqueeze(0).float().to(device)
     seg_t = (seg_t - 0.5) / 0.5  # (1, H, W), normalised to [-1, 1]
 
-    coord = _make_coord((H, W)).to(device)  # (H*W, 2)
-    cell = torch.tensor([2 / H, 2 / W], device=device).unsqueeze(0).expand(H * W, -1)  # (H*W, 2)
+    # Pad by 32px with reflect — matches the training pipeline (OfflineDataset_crm_pad32).
+    # Without this, boundary convolutions see zeros instead of reflected content, causing
+    # corner/edge artifacts in the output.
+    pad = 32
+    im_t = torch.nn.functional.pad(im_t.unsqueeze(0), (pad, pad, pad, pad), mode="reflect").squeeze(0)
+    seg_t = torch.nn.functional.pad(seg_t.unsqueeze(0), (pad, pad, pad, pad), mode="reflect").squeeze(0)
+
+    pH, pW = H + 2 * pad, W + 2 * pad
+    coord = _make_coord((pH, pW)).to(device)  # (pH*pW, 2)
+    cell = torch.tensor([2 / pH, 2 / pW], device=device).unsqueeze(0).expand(pH * pW, -1)  # (pH*pW, 2)
 
     # seg_t is updated after each scale (iterative refinement)
-    cur_seg = seg_t.unsqueeze(0)  # (1, 1, H, W)
+    cur_seg = seg_t.unsqueeze(0)  # (1, 1, pH, pW)
 
     with torch.no_grad():
         for s in scales:
-            sH = max(1, int(H * s))
-            sW = max(1, int(W * s))
+            sH = max(1, int(pH * s))
+            sW = max(1, int(pW * s))
             im_s = torch.nn.functional.interpolate(
                 im_t.unsqueeze(0), size=(sH, sW), mode="bilinear", align_corners=True
             )
@@ -110,10 +118,12 @@ def process_with_crm(image, probs_mask, crm_model, config):
                 pred_parts.append(out_dict["pred_224"].squeeze(0))  # (chunk, 1)
 
             # pred_224 is already in [0, 1] — no sigmoid needed
-            pred = torch.cat(pred_parts, dim=0).view(H, W)  # (H, W)
+            pred = torch.cat(pred_parts, dim=0).view(pH, pW)  # (pH, pW)
 
             # Update seg for next scale: convert [0,1] prediction to [-1,1]
-            cur_seg = ((pred.unsqueeze(0).unsqueeze(0) - 0.5) * 2)  # (1, 1, H, W)
+            cur_seg = ((pred.unsqueeze(0).unsqueeze(0) - 0.5) * 2)  # (1, 1, pH, pW)
 
-    refined = pred.cpu().numpy()
-    return (refined >= 0.5).astype(np.float32)
+    # Crop padding back to original resolution
+    pred_cropped = pred[pad:pad + H, pad:pad + W]
+    refined = pred_cropped.cpu().numpy()
+    return refined
