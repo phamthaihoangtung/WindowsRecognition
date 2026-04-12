@@ -306,6 +306,15 @@ wheels = [
 ]
 
 [[package]]
+name = "fastgeodis"
+version = "1.0.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "torch" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/eb/dd/8220b4787908c4ba14f97f92a09690524184199efabffac537d1afaba314/FastGeodis-1.0.5.tar.gz", hash = "sha256:2869ecfa8d6ab0b54284d8f819e68458da4cc7b10e5282bd69d4a0fcadc3fead", size = 42680, upload-time = "2024-02-09T21:45:59.396Z" }
+
+[[package]]
 name = "filelock"
 version = "3.18.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2230,6 +2239,7 @@ dependencies = [
     { name = "cc-torch" },
     { name = "dotenv" },
     { name = "einops" },
+    { name = "fastgeodis" },
     { name = "flask" },
     { name = "flask-cors" },
     { name = "huggingface-hub" },
@@ -2263,6 +2273,7 @@ requires-dist = [
     { name = "cc-torch", git = "https://github.com/ronghanghu/cc_torch.git" },
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "einops" },
+    { name = "fastgeodis" },
     { name = "flask", specifier = ">=3.1.1" },
     { name = "flask-cors", specifier = ">=6.0.0" },
     { name = "huggingface-hub", specifier = ">=0.30.2" },

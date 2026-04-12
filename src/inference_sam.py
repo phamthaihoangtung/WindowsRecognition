@@ -20,6 +20,7 @@ from inference.tiling_processor import process_image_with_tiling
 from inference.contour_processor import process_contours
 from inference.cascade_processor import process_with_cascadepsp
 from inference.crm_processor import process_with_crm, load_crm_model
+from inference.samrefiner_processor import process_with_samrefiner, load_samrefiner_model
 from pathlib import Path
 
 
@@ -54,6 +55,8 @@ class WindowsRecognitor:
             self.sam_model = self._load_cascadepsp_model()
         elif self.refined_segmentation_mode == "crm":
             self.sam_model = self._load_crm_model()
+        elif self.refined_segmentation_mode == "samrefiner":
+            self.sam_model = self._load_samrefiner_model()
 
     def _load_sam3_model(self):
         import sam3.model_builder as _sam3_mb
@@ -131,6 +134,11 @@ class WindowsRecognitor:
         checkpoint = self.config["inference"]["crm_checkpoint"]
         return load_crm_model(checkpoint, self.device)
 
+    def _load_samrefiner_model(self):
+        checkpoint = self.config["inference"]["samrefiner_checkpoint"]
+        model_type = self.config["inference"].get("samrefiner_model_type", "vit_h")
+        return load_samrefiner_model(checkpoint, model_type, self.device)
+
     def _load_model(self, model_path, model_config, device):
         model = SegmentationModel.load_from_checkpoint(
             model_path, map_location=device, model_config=model_config,
@@ -204,11 +212,13 @@ class WindowsRecognitor:
             refined_mask = process_with_cascadepsp(stage2_image, stage2_probs, self.sam_model, self.config)
         elif self.refined_segmentation_mode == "crm":
             refined_mask = process_with_crm(stage2_image, stage2_probs, self.sam_model, self.config["inference"])
+        elif self.refined_segmentation_mode == "samrefiner":
+            refined_mask = process_with_samrefiner(stage2_image, stage2_probs, self.sam_model, self.config["inference"])
 
         if stage2_size is not None:
             refined_mask = cv2.resize(refined_mask.astype(np.float32), (orig_w, orig_h))
 
-        if self.refined_segmentation_mode in ("cascadepsp", "crm"):
+        if self.refined_segmentation_mode in ("cascadepsp", "crm", "samrefiner"):
             return (refined_mask >= 0.5).astype(np.float32)
 
         postprocessing_mask = post_process_refined_mask(

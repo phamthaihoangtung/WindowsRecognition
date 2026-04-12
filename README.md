@@ -25,6 +25,15 @@ bash scripts/install_crm.sh
 
 This initializes the CRM submodule and runs `uv sync` to install all dependencies.
 
+### SAMRefiner (experimental)
+Download the SAM-HQ ViT-H checkpoint (~2.6GB) from [HuggingFace](https://huggingface.co/lkeab/hq-sam/resolve/main/sam_hq_vit_h.pth) and place it at `models/samrefiner/sam_hq_vit_h.pth`.
+
+```bash
+bash scripts/install_samrefiner.sh
+```
+
+This initializes the SAMRefiner submodule and runs `uv sync` to install all dependencies including FastGeodis.
+
 ### SAM3 (experimental)
 Add `HF_TOKEN=your_token_here` to your `.env` file — the model is gated on HuggingFace.
 

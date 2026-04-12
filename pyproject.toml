@@ -28,10 +28,11 @@ dependencies = [
     "cc-torch",
     "segmentation-refinement",
     "progressbar2",
+    "FastGeodis",
 ]
 
 [tool.uv]
-no-build-isolation-package = ["cc-torch"]
+no-build-isolation-package = ["cc-torch", "fastgeodis"]
 
 [tool.uv.sources]
 torch = [
