@@ -19,11 +19,11 @@ inference:
   samrefiner_model_type: "vit_h"  # One of: vit_h, vit_l, vit_b, vit_tiny
 
   # Refinement parameters
-  samrefiner_threshold: 0.5       # Binarise the coarse probability mask before passing to SAMRefiner
+  samrefiner_threshold: 0.2       # Binarise the coarse probability mask before passing to SAMRefiner
   samrefiner_iters: 5             # Number of iterative refinement rounds
   samrefiner_gamma: 4.0           # Geodesic distance gamma for point sampling (higher = focus on boundary)
   samrefiner_strength: 30         # Gaussian weighting strength for mask prompt
-  samrefiner_margin: 0.0          # Fractional margin to expand bounding boxes (0 = tight)
+  samrefiner_margin: 0.05          # Fractional margin to expand bounding boxes (0 = tight)
 
   # Prompt types to use (all enabled = best quality, disable to trade accuracy for speed)
   samrefiner_use_point: true      # Use geodesic-sampled foreground/background point prompts
