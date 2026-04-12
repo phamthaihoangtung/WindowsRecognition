@@ -10,7 +10,7 @@ uv sync
 
 # Install SAM2 submodule
 git submodule update --init --recursive
-bash scripts/install_sam.sh
+bash scripts/install/install_sam.sh
 ```
 
 Add a `.env` file with your Weights & Biases API key:
@@ -20,10 +20,10 @@ WANDB_API_KEY=your_wandb_api_key_here
 
 Optional external refiners (install only what you need):
 ```bash
-bash scripts/install_sam3.sh       # SAM3 coarse segmentation
-bash scripts/install_cascadepsp.sh # CascadePSP stage-2 refiner
-bash scripts/install_crm.sh        # CRM stage-2 refiner
-bash scripts/install_samrefiner.sh # SAMRefiner (SAM-HQ) stage-2 refiner
+bash scripts/install/install_sam3.sh       # SAM3 coarse segmentation
+bash scripts/install/install_cascadepsp.sh # CascadePSP stage-2 refiner
+bash scripts/install/install_crm.sh        # CRM stage-2 refiner
+bash scripts/install/install_samrefiner.sh # SAMRefiner (SAM-HQ) stage-2 refiner
 ```
 
 ## Commands
@@ -41,12 +41,14 @@ uv run python src/inference_sam.py   # general entry point
 
 Scripts:
 - `scripts/train.sh` — training
-- `scripts/infer.sh` — standard inference
-- `scripts/infer_sam.sh` — SAM2 contour/tiling refinement
-- `scripts/infer_sam3.sh` — SAM3 coarse + SAM2 refinement
-- `scripts/infer_cascadepsp.sh` — SAM3 coarse + CascadePSP refinement
-- `scripts/infer_crm.sh` — SAM3 coarse + CRM refinement
-- `scripts/infer_samrefiner.sh` — SAM3 coarse + SAMRefiner (SAM-HQ) refinement
+- `scripts/infer/infer.sh` — standard inference
+- `scripts/infer/infer_sam.sh` — SAM2 contour/tiling refinement
+- `scripts/infer/infer_sam3.sh` — SAM3 coarse + SAM2 refinement
+- `scripts/infer/infer_cascadepsp.sh` — SAM3 coarse + CascadePSP refinement
+- `scripts/infer/infer_crm.sh` — SAM3 coarse + CRM refinement
+- `scripts/infer/infer_samrefiner.sh` — SAM3 coarse + SAMRefiner (SAM-HQ) refinement
+
+Data utilities: `scripts/data/` — crawl_interiors, move_matching_masks, run_copy_image_mask_pairs
 
 ## Architecture
 
