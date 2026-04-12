@@ -190,6 +190,9 @@ models/*
 !models/crm/
 models/crm/*
 !models/crm/.gitkeep
+!models/samrefiner/
+models/samrefiner/*
+!models/samrefiner/.gitkeep
 
 # Ignore all files under .vscode folder
 .vscode/*
