@@ -29,6 +29,8 @@ dependencies = [
     "segmentation-refinement",
     "progressbar2",
     "FastGeodis",
+    "gdown>=6.0.0",
+    "openmim>=0.3.9",
 ]
 
 [tool.uv]

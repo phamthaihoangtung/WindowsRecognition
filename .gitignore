@@ -193,6 +193,9 @@ models/crm/*
 !models/samrefiner/
 models/samrefiner/*
 !models/samrefiner/.gitkeep
+!models/segrefiner/
+models/segrefiner/*
+!models/segrefiner/.gitkeep
 
 # Ignore all files under .vscode folder
 .vscode/*
