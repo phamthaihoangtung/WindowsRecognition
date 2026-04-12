@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from inference.cascade_processor import process_with_cascadepsp
 
 OFFICIAL_TEST_DIR = "data/official_test"
-TEST_IMAGES = ["0O9A9803.jpg"]
+TEST_IMAGES = ["0O9A9803.jpg", "0V7A2364.jpg", "_DSC0526.jpg", "_DSC4368.jpg"]
 
 
 # --- Unit tests (mocked model, no weights needed) ---
